@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.env
+data/session/
+data/calls.db
+data/csv/
+logs/
+.venv/
+.claude/settings.local.json

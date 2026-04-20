@@ -1,0 +1,24 @@
+[Unit]
+Description=Alpha Tracker Call Logger
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# UPDATE THESE to match your setup:
+User=YOUR_USERNAME
+WorkingDirectory=/home/YOUR_USERNAME/alpha-tracker
+ExecStart=/home/YOUR_USERNAME/alpha-tracker/.venv/bin/python main.py
+Restart=always
+RestartSec=10
+
+# Environment
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/YOUR_USERNAME/.Xauthority
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

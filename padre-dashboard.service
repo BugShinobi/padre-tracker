@@ -1,0 +1,19 @@
+[Unit]
+Description=Padre Tracker Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cokle
+WorkingDirectory=/home/cokle/padre-tracker
+ExecStart=/home/cokle/padre-tracker/.venv/bin/python src/dashboard.py
+Restart=always
+RestartSec=10
+Environment=DASHBOARD_PORT=8080
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

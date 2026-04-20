@@ -1,0 +1,33 @@
+module.exports = {
+  apps: [
+    {
+      name: 'padre-tracker',
+      script: '/usr/bin/xvfb-run',
+      args: '-a .venv/bin/python main.py',
+      cwd: '/home/cokle/padre-tracker',
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 10000,
+      out_file: './logs/tracker-out.log',
+      error_file: './logs/tracker-error.log',
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+    },
+    {
+      name: 'padre-dashboard',
+      script: '.venv/bin/python',
+      args: 'src/dashboard.py',
+      cwd: '/home/cokle/padre-tracker',
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 5000,
+      env: { DASHBOARD_PORT: '8080' },
+      out_file: './logs/dashboard-out.log',
+      error_file: './logs/dashboard-error.log',
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+    },
+  ],
+};
