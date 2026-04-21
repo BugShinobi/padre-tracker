@@ -11,7 +11,9 @@ import logging
 import sqlite3
 import time
 
-import requests
+# Using tls_client instead of standard requests to spoof browser fingerprints
+# GMGN uses strict Cloudflare protection that blocks standard requests/curl
+import tls_client
 
 log = logging.getLogger(__name__)
 
@@ -64,16 +66,33 @@ def init_cache(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _get_tls_session() -> tls_client.Session:
+    """Create a TLS client session that mimics a real Chrome browser.
+    
+    This is necessary because GMGN strictly blocks Python requests and standard
+    cURL commands via Cloudflare's bot protection (returning 403 Forbidden).
+    """
+    session = tls_client.Session(
+        client_identifier="chrome_120",
+        random_tls_extension_order=True
+    )
+    session.headers.update(_HEADERS)
+    return session
+
+
 def _fetch_one(ca: str) -> dict | None:
     """Fetch from both GMGN endpoints and merge. Returns None on failure."""
     result: dict = {"contract_address": ca}
     got_data = False
+    
+    session = _get_tls_session()
 
     # 1. Quotation endpoint: price, flags, burn, swaps
     try:
-        r = requests.get(
+        # Use session.get instead of requests.get to bypass Cloudflare
+        r = session.get(
             GMGN_QUOTE_URL, params={"address": ca},
-            headers=_HEADERS, timeout=HTTP_TIMEOUT,
+            timeout_seconds=HTTP_TIMEOUT,
         )
         if r.status_code == 200:
             body = r.json()
@@ -107,9 +126,10 @@ def _fetch_one(ca: str) -> dict | None:
 
     # 2. Token info endpoint: holder_count, timestamps
     try:
-        r2 = requests.get(
+        # Use session.get instead of requests.get
+        r2 = session.get(
             GMGN_INFO_URL.format(ca=ca),
-            headers=_HEADERS, timeout=HTTP_TIMEOUT,
+            timeout_seconds=HTTP_TIMEOUT,
         )
         if r2.status_code == 200:
             body2 = r2.json()
