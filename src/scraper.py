@@ -270,10 +270,10 @@ def scrape_alpha_tracker(
             log.info("SKIP_AD  [%d] %s marker=%r %r", i, ca[:8], ad_marker, item.get("_text", "")[:80])
             continue
 
-        # Conservative: if no group AND no ticker AND no launchpad, almost certainly an ad
-        if require_quality and not group and not ticker and not launchpad:
+        # No group = always skip — Padre calls always have group attribution; no group = ad/noise
+        if not group:
             skipped_ad += 1
-            log.info("SKIP_AD  [%d] %s (no group+ticker+launchpad) %r", i, ca[:8], item.get("_text", "")[:80])
+            log.info("SKIP_AD  [%d] %s (no group) %r", i, ca[:8], item.get("_text", "")[:80])
             continue
 
         if launchpad and launchpad in ignore_launchpads:

@@ -82,10 +82,9 @@ def main():
         purged_q = purge_low_quality(conn)
         if purged_q:
             log.info("Purged %d low-quality rows (no ticker and no group)", purged_q)
-    if os.getenv("PURGE_NO_GROUP", "0") not in ("0", "false", "False", ""):
-        purged_ng = purge_no_group(conn)
-        if purged_ng:
-            log.info("Purged %d rows without group (likely DEX Paid events)", purged_ng)
+    purged_ng = purge_no_group(conn)
+    if purged_ng:
+        log.info("Purged %d rows without group (DEX Paid / ad noise)", purged_ng)
     reset = reset_today_counts(conn)
     if reset:
         log.info("Reset call_count=1 on %d today-rows (fixing pre-bug inflated counters)", reset)

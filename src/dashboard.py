@@ -110,13 +110,12 @@ def home():
                 t["mc_fmt"] = _fmt_big(p.get("market_cap"))
                 g = gmgn_data.get(t["contract_address"]) or {}
                 t["holder_count"] = g.get("holder_count")
-                t["top10_pct"] = g.get("top10_pct")
+                t["top10_pct"] = _fmt_pct(g.get("top10_pct"))
                 t["renounced"] = g.get("renounced")
-                t["mint_revoked"] = g.get("mint_revoked")
-                t["freeze_revoked"] = g.get("freeze_revoked")
-                t["lp_burned_pct"] = g.get("lp_burned_pct")
-                t["twitter"] = g.get("twitter")
-                t["telegram"] = g.get("telegram")
+                t["mint_revoked"] = g.get("renounced_mint")
+                t["freeze_revoked"] = g.get("renounced_freeze")
+                t["lp_burned_pct"] = g.get("burn_ratio")
+                t["burn_status"] = g.get("burn_status")
 
         hourly_max = max((h["new_tokens"] for h in data["hourly_today"]), default=0)
 
@@ -261,16 +260,12 @@ def day():
             r["holder_count"] = g.get("holder_count")
             r["top10_pct"] = _fmt_pct(g.get("top10_pct"))
             r["renounced"] = g.get("renounced")
-            r["mint_revoked"] = g.get("mint_revoked")
-            r["freeze_revoked"] = g.get("freeze_revoked")
-            r["lp_burned_pct"] = _fmt_pct(g.get("lp_burned_pct"))
-            r["twitter"] = g.get("twitter")
-            r["telegram"] = g.get("telegram")
-            r["website"] = g.get("website")
-            r["buys_5m"] = g.get("buys_5m")
-            r["sells_5m"] = g.get("sells_5m")
-            r["smart_buyers"] = g.get("smart_buyers")
-            r["sniper_count"] = g.get("sniper_count")
+            r["mint_revoked"] = g.get("renounced_mint")
+            r["freeze_revoked"] = g.get("renounced_freeze")
+            r["lp_burned_pct"] = _fmt_pct(g.get("burn_ratio"))
+            r["burn_status"] = g.get("burn_status")
+            r["swaps_5m"] = g.get("swaps_5m")
+            r["swaps_1h"] = g.get("swaps_1h")
 
     return render_template(
         "day.html",
@@ -283,6 +278,121 @@ def day():
         date_prev=date_prev,
         date_next=date_next,
         is_today=(target == today),
+        today=today.isoformat(),
+    )
+
+
+@app.route("/range")
+def range_view():
+    today = date.today()
+    d_from_str = request.args.get("from")
+    d_to_str = request.args.get("to")
+    try:
+        d_from = date.fromisoformat(d_from_str) if d_from_str else today - timedelta(days=6)
+    except ValueError:
+        d_from = today - timedelta(days=6)
+    try:
+        d_to = date.fromisoformat(d_to_str) if d_to_str else today
+    except ValueError:
+        d_to = today
+    if d_from > d_to:
+        d_from, d_to = d_to, d_from
+
+    if not Path(DB_PATH).exists():
+        return render_template("range.html", active_nav="range", calls=[], stats={},
+                               all_groups=[], all_launchpads=[],
+                               date_from=d_from.isoformat(), date_to=d_to.isoformat(),
+                               today=today.isoformat())
+
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            """SELECT contract_address,
+                      MAX(ticker)           AS ticker,
+                      MAX(launchpad)        AS launchpad,
+                      SUM(call_count)       AS total_calls,
+                      COUNT(*)              AS days_active,
+                      MIN(first_seen_at)    AS first_seen_at,
+                      MAX(last_seen_at)     AS last_seen_at,
+                      GROUP_CONCAT(groups_mentioned, ',') AS groups_raw
+               FROM calls
+               WHERE call_date >= ? AND call_date <= ?
+               GROUP BY contract_address
+               ORDER BY total_calls DESC""",
+            (d_from.isoformat(), d_to.isoformat()),
+        ).fetchall()
+        all_rows = []
+        for r in rows:
+            d = dict(r)
+            groups_set: set[str] = set()
+            for chunk in (d.pop("groups_raw") or "").split(","):
+                g = chunk.strip()
+                if g:
+                    groups_set.add(g)
+            d["groups_mentioned"] = ", ".join(sorted(groups_set)) if groups_set else None
+            d["call_count"] = d.pop("total_calls")
+            all_rows.append(d)
+
+        cas = [r["contract_address"] for r in all_rows]
+        prices = get_prices(conn, cas) if cas else {}
+        gmgn_init_cache(conn)
+        placeholders = ",".join("?" * len(cas)) if cas else "NULL"
+        gmgn_rows = conn.execute(
+            f"SELECT * FROM token_gmgn WHERE contract_address IN ({placeholders})",
+            tuple(cas),
+        ).fetchall() if cas else []
+        gmgn_data = {row["contract_address"]: dict(row) for row in gmgn_rows}
+    finally:
+        conn.close()
+
+    all_groups: set[str] = set()
+    lp_counts: dict[str, int] = {}
+    group_counts: dict[str, int] = {}
+
+    for r in all_rows:
+        p = prices.get(r["contract_address"]) or {}
+        r["price_usd"] = p.get("price_usd")
+        r["price_fmt"] = _fmt_price(p.get("price_usd"))
+        r["price_change_h24"] = p.get("price_change_h24")
+        r["market_cap"] = p.get("market_cap") or 0
+        r["mc_fmt"] = _fmt_big(p.get("market_cap"))
+        g = gmgn_data.get(r["contract_address"]) or {}
+        r["holder_count"] = g.get("holder_count")
+        r["top10_pct"] = _fmt_pct(g.get("top10_pct"))
+        r["renounced"] = g.get("renounced")
+        r["mint_revoked"] = g.get("renounced_mint")
+        r["freeze_revoked"] = g.get("renounced_freeze")
+        r["burn_status"] = g.get("burn_status")
+        r["lp_burned_pct"] = _fmt_pct(g.get("burn_ratio"))
+
+        if r["launchpad"]:
+            lp_counts[r["launchpad"]] = lp_counts.get(r["launchpad"], 0) + 1
+        if r["groups_mentioned"]:
+            for grp in r["groups_mentioned"].split(","):
+                grp = grp.strip()
+                if grp:
+                    all_groups.add(grp)
+                    group_counts[grp] = group_counts.get(grp, 0) + 1
+
+    all_launchpads = sorted({r["launchpad"] for r in all_rows if r["launchpad"]})
+    stats = {
+        "tokens": len(all_rows),
+        "total_calls": sum(r["call_count"] for r in all_rows),
+        "with_group": sum(1 for r in all_rows if r["groups_mentioned"]),
+        "days": (d_to - d_from).days + 1,
+        "top_group": max(group_counts, key=group_counts.get) if group_counts else None,
+        "top_launchpad": max(lp_counts, key=lp_counts.get) if lp_counts else None,
+    }
+
+    return render_template(
+        "range.html",
+        active_nav="range",
+        calls=all_rows,
+        stats=stats,
+        all_groups=sorted(all_groups),
+        all_launchpads=all_launchpads,
+        date_from=d_from.isoformat(),
+        date_to=d_to.isoformat(),
         today=today.isoformat(),
     )
 
