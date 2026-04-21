@@ -36,7 +36,17 @@ def _conn() -> sqlite3.Connection:
     return conn
 
 
-def _fmt_price(v: float | None) -> str:
+def _safe_float(v) -> float | None:
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (ValueError, TypeError):
+        return None
+
+
+def _fmt_price(v) -> str:
+    v = _safe_float(v)
     if v is None:
         return "—"
     if v >= 1:
@@ -46,7 +56,8 @@ def _fmt_price(v: float | None) -> str:
     return f"{v:.6f}".rstrip("0").rstrip(".")
 
 
-def _fmt_big(v: float | None) -> str:
+def _fmt_big(v) -> str:
+    v = _safe_float(v)
     if not v:
         return "—"
     for unit, div in [("B", 1e9), ("M", 1e6), ("K", 1e3)]:
@@ -55,7 +66,8 @@ def _fmt_big(v: float | None) -> str:
     return f"{v:.0f}"
 
 
-def _fmt_pct(v: float | None) -> str:
+def _fmt_pct(v) -> str:
+    v = _safe_float(v)
     if v is None:
         return "—"
     return f"{v * 100:.1f}%" if v <= 1.0 else f"{v:.1f}%"
@@ -103,18 +115,18 @@ def home():
             gmgn_data = get_gmgn(conn, top_cas)
             for t in top:
                 p = prices.get(t["contract_address"]) or {}
-                t["price_usd"] = p.get("price_usd")
-                t["price_fmt"] = _fmt_price(p.get("price_usd"))
-                t["price_change_h24"] = p.get("price_change_h24")
-                t["market_cap"] = p.get("market_cap")
-                t["mc_fmt"] = _fmt_big(p.get("market_cap"))
+                t["price_usd"] = _safe_float(p.get("price_usd"))
+                t["price_fmt"] = _fmt_price(t["price_usd"])
+                t["price_change_h24"] = _safe_float(p.get("price_change_h24"))
+                t["market_cap"] = _safe_float(p.get("market_cap"))
+                t["mc_fmt"] = _fmt_big(t["market_cap"])
                 g = gmgn_data.get(t["contract_address"]) or {}
                 t["holder_count"] = g.get("holder_count")
                 t["top10_pct"] = _fmt_pct(g.get("top10_pct"))
                 t["renounced"] = g.get("renounced")
                 t["mint_revoked"] = g.get("renounced_mint")
                 t["freeze_revoked"] = g.get("renounced_freeze")
-                t["lp_burned_pct"] = g.get("burn_ratio")
+                t["lp_burned_pct"] = _safe_float(g.get("burn_ratio"))
                 t["burn_status"] = g.get("burn_status")
 
         hourly_max = max((h["new_tokens"] for h in data["hourly_today"]), default=0)
@@ -250,11 +262,11 @@ def day():
             conn.close()
         for r in calls:
             p = prices.get(r["contract_address"]) or {}
-            r["price_usd"] = p.get("price_usd")
-            r["price_fmt"] = _fmt_price(p.get("price_usd"))
-            r["price_change_h24"] = p.get("price_change_h24")
-            r["market_cap"] = p.get("market_cap") or 0
-            r["mc_fmt"] = _fmt_big(p.get("market_cap"))
+            r["price_usd"] = _safe_float(p.get("price_usd"))
+            r["price_fmt"] = _fmt_price(r["price_usd"])
+            r["price_change_h24"] = _safe_float(p.get("price_change_h24"))
+            r["market_cap"] = _safe_float(p.get("market_cap")) or 0
+            r["mc_fmt"] = _fmt_big(r["market_cap"])
             lw = lifetime.get(r["contract_address"]) or {}
             r["lifetime_first"] = (lw.get("first_ever") or "")[:10]
             r["lifetime_last"] = (lw.get("last_ever") or "")[:10]
@@ -356,11 +368,11 @@ def range_view():
 
     for r in all_rows:
         p = prices.get(r["contract_address"]) or {}
-        r["price_usd"] = p.get("price_usd")
-        r["price_fmt"] = _fmt_price(p.get("price_usd"))
-        r["price_change_h24"] = p.get("price_change_h24")
-        r["market_cap"] = p.get("market_cap") or 0
-        r["mc_fmt"] = _fmt_big(p.get("market_cap"))
+        r["price_usd"] = _safe_float(p.get("price_usd"))
+        r["price_fmt"] = _fmt_price(r["price_usd"])
+        r["price_change_h24"] = _safe_float(p.get("price_change_h24"))
+        r["market_cap"] = _safe_float(p.get("market_cap")) or 0
+        r["mc_fmt"] = _fmt_big(r["market_cap"])
         g = gmgn_data.get(r["contract_address"]) or {}
         r["holder_count"] = g.get("holder_count")
         r["top10_pct"] = _fmt_pct(g.get("top10_pct"))

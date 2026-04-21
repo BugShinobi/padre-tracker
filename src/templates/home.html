@@ -112,7 +112,7 @@ tr:hover td { background: #141922; }
 .live-feed::-webkit-scrollbar-track { background: transparent; }
 .live-feed::-webkit-scrollbar-thumb { background: #2d3540; border-radius: 2px; }
 .feed-row {
-  display: grid; grid-template-columns: 70px 80px 1fr auto;
+  display: grid; grid-template-columns: 45px 80px 145px 1fr auto;
   align-items: center; gap: 10px; padding: 7px 10px; border-radius: 4px;
   background: #0d0f12; border: 1px solid transparent;
   font-size: .8rem; transition: border-color .1s;
@@ -333,9 +333,22 @@ function addFeedRow(call, isNew) {
   const lpColor = LP_COLORS[call.launchpad] || '#6b7380';
   const lpBg = call.launchpad ? `background:${lpColor}22;color:${lpColor}` : 'color:#4a5260';
 
+  const caStr = call.contract_address || '';
+  const caShort = caStr ? caStr.slice(0, 4) + '…' + caStr.slice(-4) : '';
+  const caHtml = caStr ? `
+    <div style="display:flex;align-items:center;gap:4px;">
+      <span style="font-family:'SF Mono',monospace;font-size:0.72rem;color:#8a93a0;">${caShort}</span>
+      <span class="ca-links" style="display:flex;gap:3px;">
+        <a class="lnk-d" href="https://dexscreener.com/solana/${caStr}" target="_blank" title="DexScreener">D</a>
+        <a class="lnk-g" href="https://gmgn.ai/sol/token/${caStr}" target="_blank" title="GMGN">G</a>
+        <a class="lnk-p" href="https://trade.padre.gg/?ca=${caStr}" target="_blank" title="Padre">P</a>
+      </span>
+    </div>` : '<span class="muted">—</span>';
+
   row.innerHTML = `
     <span class="feed-time">${fmtTime(call.first_seen_at)}</span>
     <span class="${call.ticker ? 'feed-ticker' : 'feed-ticker unknown'}">${call.ticker || '???'}</span>
+    ${caHtml}
     <span class="feed-group">${call.groups_mentioned || '—'}</span>
     <span class="feed-calls">${call.call_count > 1 ? call.call_count + '×' : ''}</span>
   `;
