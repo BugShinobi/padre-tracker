@@ -369,7 +369,7 @@ async function pollFeed() {
       // Update lastTs to most recent
       const maxTs = Math.max(...calls.map(c => new Date(c.first_seen_at).getTime() / 1000));
       lastTs = maxTs;
-      calls.forEach(c => addFeedRow(c, true));
+      calls.reverse().forEach(c => addFeedRow(c, true));
       // Update live KPI counters
       updateStats();
     }
@@ -389,7 +389,7 @@ async function updateStats() {
 
 // Load last 5 min of history on init
 fetch('/api/latest?since=' + lastTs).then(r => r.json()).then(calls => {
-  calls.reverse().forEach(c => addFeedRow(c, false));
+  calls.forEach(c => addFeedRow(c, false));
   if (calls.length > 0) {
     lastTs = Math.max(...calls.map(c => new Date(c.first_seen_at).getTime() / 1000));
   }
