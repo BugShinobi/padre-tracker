@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{% block title %}Padre Tracker{% endblock %}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; }
+body {
+  background: #0d0f12;
+  color: #e8ebef;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: #6aa6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.header {
+  padding: 18px 28px; border-bottom: 1px solid #1f242b;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.header h1 {
+  font-size: 1.05rem; color: #fff; letter-spacing: 0.12em;
+  text-transform: uppercase; font-weight: 600;
+}
+.header .sub { color: #6b7380; font-size: 0.78rem; margin-top: 4px; letter-spacing: 0.05em; }
+.nav { display: flex; gap: 20px; font-size: 0.82rem; }
+.nav a { color: #8a93a0; text-transform: uppercase; letter-spacing: 0.09em; font-weight: 500; }
+.nav a.active { color: #fff; }
+
+.mono { font-family: 'SF Mono', Menlo, Consolas, monospace; }
+.muted { color: #6b7380; }
+.pos { color: #8ed8a5; }
+.neg { color: #ff9090; }
+
+.lp {
+  display: inline-block; padding: 3px 9px; border-radius: 4px;
+  font-size: 0.74rem; font-weight: 600; letter-spacing: 0.03em;
+  text-transform: lowercase;
+}
+.lp.pump { background: #2d1f3f; color: #b28cff; }
+.lp.bags { background: #3a2a1a; color: #ffb46e; }
+.lp.moon { background: #1a2e3a; color: #6ed2ff; }
+.lp.bonk { background: #3a2a2a; color: #ff9090; }
+.lp.none { color: #4a5260; font-weight: 400; text-transform: none; font-style: italic; font-size: 0.78rem; }
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Padre Tracker</h1>
+    <div class="sub">{% block subtitle %}Alpha calls aggregated by contract address{% endblock %}</div>
+  </div>
+  <nav class="nav">
+    <a href="/" class="{% if active_nav == 'home' %}active{% endif %}">Home</a>
+    <a href="/day" class="{% if active_nav == 'day' %}active{% endif %}">Daily</a>
+  </nav>
+</div>
+
+{% block content %}{% endblock %}
+
+</body>
+</html>
