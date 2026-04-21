@@ -219,7 +219,7 @@ tr:hover td { background: #141922; }
               <span class="ca-links">
                 <a class="lnk-d" href="https://dexscreener.com/solana/{{ t.contract_address }}" target="_blank" title="DexScreener">D</a>
                 <a class="lnk-g" href="https://gmgn.ai/sol/token/{{ t.contract_address }}" target="_blank" title="GMGN">G</a>
-                <a class="lnk-p" href="https://trade.padre.gg/?ca={{ t.contract_address }}" target="_blank" title="Padre">P</a>
+                <a class="lnk-p" href="https://trade.padre.gg/trade/solana/{{ t.contract_address }}" target="_blank" title="Padre">P</a>
               </span>
             </div>
           </td>
@@ -341,7 +341,7 @@ function addFeedRow(call, isNew) {
       <span class="ca-links" style="display:flex;gap:3px;">
         <a class="lnk-d" href="https://dexscreener.com/solana/${caStr}" target="_blank" title="DexScreener">D</a>
         <a class="lnk-g" href="https://gmgn.ai/sol/token/${caStr}" target="_blank" title="GMGN">G</a>
-        <a class="lnk-p" href="https://trade.padre.gg/?ca=${caStr}" target="_blank" title="Padre">P</a>
+        <a class="lnk-p" href="https://trade.padre.gg/trade/solana/${caStr}" target="_blank" title="Padre">P</a>
       </span>
     </div>` : '<span class="muted">—</span>';
 
