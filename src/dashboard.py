@@ -122,7 +122,7 @@ def home():
 
 
 # ------------------------------------------------------------------ /day
-def _daily_data(target: date, min_calls: int, group_filter: str, lp_filter: str):
+def _daily_data(target: date):
     if not Path(DB_PATH).exists():
         return [], {}, [], []
 
@@ -139,6 +139,27 @@ def _daily_data(target: date, min_calls: int, group_filter: str, lp_filter: str)
         conn.close()
 
     all_rows = [dict(r) for r in all_rows]
+
+    # Compute duration + velocity on ALL rows (needed for client-side filtering too)
+    for r in all_rows:
+        try:
+            t0 = datetime.fromisoformat(r["first_seen_at"])
+            t1 = datetime.fromisoformat(r["last_seen_at"])
+            mins = (t1 - t0).total_seconds() / 60
+            r["duration_min"] = round(mins)
+            if mins < 1:
+                r["duration_str"] = "once"
+                r["velocity"] = "—"
+            elif mins < 90:
+                r["duration_str"] = f"{round(mins)}m"
+                r["velocity"] = f"{r['call_count'] / max(mins / 60, 1/60):.1f}" if mins >= 30 else "—"
+            else:
+                r["duration_str"] = f"{mins/60:.1f}h"
+                r["velocity"] = f"{r['call_count'] / (mins / 60):.1f}"
+        except Exception:
+            r["duration_min"] = 0
+            r["duration_str"] = "—"
+            r["velocity"] = "—"
 
     all_groups: set[str] = set()
     for r in all_rows:
@@ -169,27 +190,7 @@ def _daily_data(target: date, min_calls: int, group_filter: str, lp_filter: str)
         "top_launchpad": max(lp_counts, key=lp_counts.get) if lp_counts else None,
     }
 
-    filtered = [r for r in all_rows if r["call_count"] >= min_calls]
-    if group_filter:
-        filtered = [r for r in filtered if r["groups_mentioned"] and group_filter in r["groups_mentioned"]]
-    if lp_filter:
-        filtered = [r for r in filtered if r["launchpad"] == lp_filter]
-
-    for r in filtered:
-        try:
-            t0 = datetime.fromisoformat(r["first_seen_at"])
-            t1 = datetime.fromisoformat(r["last_seen_at"])
-            mins = max(1, (t1 - t0).total_seconds() / 60)
-            hours = mins / 60
-            r["duration_min"] = round(mins)
-            r["duration_str"] = f"{round(mins)}m" if mins < 90 else f"{mins/60:.1f}h"
-            r["velocity"] = f"{r['call_count'] / max(hours, 1/60):.1f}"
-        except Exception:
-            r["duration_min"] = 0
-            r["duration_str"] = "—"
-            r["velocity"] = "—"
-
-    return filtered, stats, sorted(all_groups), all_launchpads
+    return list(all_rows), stats, sorted(all_groups), all_launchpads
 
 
 @app.route("/day")
@@ -200,10 +201,14 @@ def day():
     except ValueError:
         target = date.today()
 
-    # Server-side: only date filter. All other filtering happens client-side for instant UX.
-    calls, stats, all_groups, all_launchpads = _daily_data(target, 1, "", "")
+    date_prev = (target - timedelta(days=1)).isoformat()
+    date_next = (target + timedelta(days=1)).isoformat()
+    today = date.today()
 
-    # Enrich all day rows with price + market cap so client-side MC filter works.
+    # All filtering is client-side for instant UX.
+    calls, stats, all_groups, all_launchpads = _daily_data(target)
+
+    # Enrich all rows with price + MC so client-side MC filter works.
     if calls:
         conn = _conn()
         try:
@@ -226,7 +231,10 @@ def day():
         all_groups=all_groups,
         all_launchpads=all_launchpads,
         date_str=target.isoformat(),
-        today=date.today().isoformat(),
+        date_prev=date_prev,
+        date_next=date_next,
+        is_today=(target == today),
+        today=today.isoformat(),
     )
 
 

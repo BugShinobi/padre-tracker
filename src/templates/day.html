@@ -1,115 +1,170 @@
 {% extends "base.html" %}
-{% block subtitle %}Daily detail · {{ date_str }}{% endblock %}
+{% block subtitle %}<span id="subRefresh">Daily detail · {{ date_str }}</span>{% endblock %}
 
 {% block head %}
 <style>
+/* ── date nav ── */
+.date-nav {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 12px 28px; border-bottom: 1px solid #1f242b; background: #0d0f12;
+}
+.date-nav a.nav-arrow {
+  color: #8a93a0; font-size: 1.1rem; padding: 4px 10px;
+  border: 1px solid #2d3540; border-radius: 5px; text-decoration: none;
+  transition: all .15s; line-height: 1;
+}
+.date-nav a.nav-arrow:hover { color: #fff; border-color: #4a6fa5; }
+.date-nav a.nav-arrow.disabled { opacity: .3; pointer-events: none; }
+.date-nav .date-label {
+  font-size: 0.95rem; font-weight: 600; color: #fff; letter-spacing: .04em;
+  cursor: pointer; padding: 4px 8px; border-radius: 4px;
+}
+.date-nav .date-label:hover { background: #141922; }
+.date-nav a.today-btn {
+  font-size: 0.72rem; color: #6aa6ff; border: 1px solid #2a3a55;
+  padding: 3px 9px; border-radius: 10px; text-decoration: none; letter-spacing: .05em;
+}
+.date-nav a.today-btn:hover { background: #1a2a3a; }
+input#hiddenDatePicker { position:absolute; opacity:0; pointer-events:none; width:0; height:0; }
+
+/* ── stats ── */
 .stats {
-  display: flex; gap: 32px; padding: 18px 28px;
+  display: flex; gap: 32px; padding: 16px 28px;
   border-bottom: 1px solid #1f242b; flex-wrap: wrap; align-items: flex-end;
 }
 .stat-val { font-size: 1.5rem; color: #fff; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .stat-val.sm { font-size: 1rem; }
 .stat-val.live { color: #6aa6ff; }
-.stat-label {
-  font-size: 0.7rem; color: #6b7380; text-transform: uppercase;
-  letter-spacing: 0.09em; margin-top: 6px; font-weight: 500;
-}
+.stat-label { font-size: 0.7rem; color: #6b7380; text-transform: uppercase; letter-spacing: .09em; margin-top: 6px; font-weight: 500; }
 
+/* ── filters ── */
 .filters {
-  padding: 16px 28px; border-bottom: 1px solid #1f242b; background: #10141a;
+  padding: 14px 28px; border-bottom: 1px solid #1f242b; background: #10141a;
   position: sticky; top: 0; z-index: 10;
+  box-shadow: 0 0 0 transparent; transition: box-shadow .2s;
 }
-.filter-row {
-  display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center;
-}
-.fgroup {
-  display: flex; flex-direction: column; gap: 4px;
-}
-.fgroup > label {
-  font-size: 0.65rem; color: #6b7380; text-transform: uppercase;
-  letter-spacing: 0.09em; font-weight: 600;
-}
+.filters.shadowed { box-shadow: 0 4px 16px rgba(0,0,0,.5); }
+.filter-row { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; }
+.fgroup { display: flex; flex-direction: column; gap: 4px; }
+.fgroup > label { font-size: .65rem; color: #6b7380; text-transform: uppercase; letter-spacing: .09em; font-weight: 600; }
 .frow-inputs { display: flex; gap: 6px; align-items: center; }
-input[type=date], input[type=number], input[type=text], select {
+
+input[type=text], select {
   background: #181d25; border: 1px solid #2d3540; color: #e8ebef;
-  padding: 6px 10px; font-family: inherit; font-size: 0.85rem; border-radius: 5px;
+  padding: 6px 10px; font-family: inherit; font-size: .85rem; border-radius: 5px;
 }
 input:focus, select:focus { outline: none; border-color: #4a6fa5; }
-input[type=number] { width: 78px; }
 input[type=text].search { width: 140px; }
-.separator { color: #3d4553; padding: 0 2px; }
+input[type=text].time-input { width: 70px; }
 
-.chips { display: flex; flex-wrap: wrap; gap: 5px; max-width: 280px; }
-.chip {
+/* MC presets */
+.mc-presets { display: flex; gap: 4px; }
+.mc-btn {
   background: #181d25; border: 1px solid #2d3540; color: #8a93a0;
-  padding: 4px 9px; font-size: 0.76rem; border-radius: 11px;
-  cursor: pointer; user-select: none; line-height: 1;
-  transition: all 0.1s;
+  padding: 5px 10px; font-size: .76rem; border-radius: 5px;
+  cursor: pointer; user-select: none; white-space: nowrap; transition: all .1s;
+  font-family: inherit;
 }
-.chip:hover { border-color: #4a6fa5; color: #e8ebef; }
-.chip.active {
-  background: #2a3544; border-color: #4a6fa5; color: #fff; font-weight: 500;
-}
+.mc-btn:hover { border-color: #4a6fa5; color: #e8ebef; }
+.mc-btn.active { background: #2a3544; border-color: #4a6fa5; color: #fff; font-weight: 600; }
 
+/* toggle pill */
+.toggle-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #181d25; border: 1px solid #2d3540; color: #8a93a0;
+  padding: 6px 12px; font-size: .76rem; border-radius: 20px;
+  cursor: pointer; user-select: none; transition: all .1s; font-family: inherit;
+}
+.toggle-pill:hover { border-color: #4a6fa5; color: #e8ebef; }
+.toggle-pill.active { background: #1e2d1e; border-color: #5aad6f; color: #8ed8a5; }
+.toggle-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+/* reset */
 button.reset {
   background: transparent; border: 1px solid #3d4a5c; color: #8a93a0;
-  padding: 6px 14px; font-family: inherit; font-size: 0.82rem;
-  cursor: pointer; border-radius: 5px; margin-left: auto;
+  padding: 6px 14px; font-family: inherit; font-size: .82rem;
+  cursor: pointer; border-radius: 5px; margin-left: auto; white-space: nowrap;
 }
 button.reset:hover { color: #e8ebef; border-color: #4a6fa5; }
+.reset-badge {
+  display: inline-block; background: #4a6fa5; color: #fff;
+  border-radius: 8px; font-size: .68rem; font-weight: 700;
+  padding: 1px 5px; margin-left: 5px; vertical-align: middle;
+}
 
+/* chips */
+.chips-row { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip {
+  background: #181d25; border: 1px solid #2d3540; color: #8a93a0;
+  padding: 4px 9px; font-size: .76rem; border-radius: 11px;
+  cursor: pointer; user-select: none; line-height: 1; transition: all .1s;
+}
+.chip:hover { border-color: #4a6fa5; color: #e8ebef; }
+.chip.active { background: #2a3544; border-color: #4a6fa5; color: #fff; font-weight: 500; }
+.chip.expand-more { color: #6aa6ff; border-color: #2a3a55; }
+.chip.expand-more:hover { background: #1a2a3a; }
+
+/* table */
 .table-wrap { padding: 0 28px 40px; overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 0.88rem; }
+table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: .88rem; }
 thead { background: #10141a; }
 th {
   text-align: left; color: #8a93a0; border-bottom: 1px solid #232a33;
   padding: 10px 12px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.07em; font-size: 0.7rem;
+  text-transform: uppercase; letter-spacing: .07em; font-size: .7rem;
   white-space: nowrap; cursor: pointer; user-select: none;
 }
 th:hover { color: #e8ebef; }
 th.right { text-align: right; }
-th .arrow { color: #4a6fa5; margin-left: 3px; font-size: 0.8em; }
-td {
-  padding: 10px 12px; border-bottom: 1px solid #181d25;
-  vertical-align: middle; white-space: nowrap;
-}
+th .arrow { color: #4a6fa5; margin-left: 3px; font-size: .8em; }
+td { padding: 10px 12px; border-bottom: 1px solid #181d25; vertical-align: middle; white-space: nowrap; }
 tr:hover td { background: #141922; }
 tr.hidden { display: none; }
 
 .num { color: #5a6370; font-variant-numeric: tabular-nums; width: 36px; }
 .ticker { color: #fff; font-weight: 600; font-family: 'SF Mono', Menlo, Consolas, monospace; }
-.ticker.unknown { color: #4a5260; font-weight: 400; font-style: italic; font-size: 0.82rem; }
-
-.ca a {
-  color: #6aa6ff; text-decoration: none; font-size: 0.78rem;
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-}
+.ticker.unknown { color: #4a5260; font-weight: 400; font-style: italic; font-size: .82rem; }
+.ca a { color: #6aa6ff; text-decoration: none; font-size: .78rem; font-family: 'SF Mono', Menlo, Consolas, monospace; }
 .ca a:hover { text-decoration: underline; }
-
 .calls { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
 .calls.hot  { color: #ffb347; }
 .calls.warm { color: #e8ebef; }
 .calls.cold { color: #5a6370; }
-.vel { color: #8a93a0; font-size: 0.8rem; text-align: right; font-variant-numeric: tabular-nums; }
+.vel { color: #8a93a0; font-size: .8rem; text-align: right; font-variant-numeric: tabular-nums; }
 .price, .mc { text-align: right; font-variant-numeric: tabular-nums; }
-.mc { color: #8a93a0; font-size: 0.82rem; }
-
-.group { font-size: 0.82rem; max-width: 200px; overflow: hidden;
-  text-overflow: ellipsis; }
+.mc { color: #8a93a0; font-size: .82rem; }
+.group { font-size: .82rem; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 .group.tagged { color: #8ed8a5; font-weight: 500; }
 .group.none { color: #3d4553; font-style: italic; }
-
-.time { color: #6b7380; font-size: 0.8rem; font-family: 'SF Mono', Menlo, Consolas, monospace; }
-
-.empty { color: #5a6370; padding: 60px 0; text-align: center; font-size: 0.95rem; }
+.window { font-size: .78rem; font-family: 'SF Mono', Menlo, Consolas, monospace; }
+.window .w-range { color: #8a93a0; }
+.window .w-dur { color: #4a5260; font-size: .72rem; display: block; margin-top: 2px; }
 .row-hot td { border-left: 3px solid #ffb347; }
 .row-hot td:first-child { padding-left: 11px; }
+
+.empty { color: #5a6370; padding: 60px 0; text-align: center; font-size: .95rem; }
+.empty a { color: #6aa6ff; cursor: pointer; }
+.empty-filter { display: none; }
 </style>
 {% endblock %}
 
 {% block content %}
 
+<!-- Date navigation bar -->
+<div class="date-nav">
+  <a href="/day?d={{ date_prev }}" class="nav-arrow" title="Previous day">←</a>
+  <span class="date-label" onclick="document.getElementById('hiddenDatePicker').showPicker ? document.getElementById('hiddenDatePicker').showPicker() : document.getElementById('hiddenDatePicker').click()">
+    {{ date_str }}
+  </span>
+  <input type="date" id="hiddenDatePicker" value="{{ date_str }}" max="{{ today }}"
+         onchange="if(this.value) window.location='/day?d='+encodeURIComponent(this.value)">
+  <a href="/day?d={{ date_next }}" class="nav-arrow {% if is_today %}disabled{% endif %}" title="Next day">→</a>
+  {% if not is_today %}
+  <a href="/day" class="today-btn">Today</a>
+  {% endif %}
+</div>
+
+<!-- Stats bar -->
 <div class="stats">
   <div>
     <div class="stat-val">{{ stats.tokens }}</div>
@@ -135,82 +190,80 @@ tr.hidden { display: none; }
     <div class="stat-label">top group</div>
   </div>
   {% endif %}
-  <div style="margin-left:auto; text-align:right">
-    <div class="stat-val sm" style="color:#8a93a0">{{ date_str }}</div>
-    <div class="stat-label">date</div>
-  </div>
 </div>
 
-<div class="filters">
+<!-- Filter panel -->
+<div class="filters" id="filterPanel">
   <div class="filter-row">
-    <div class="fgroup">
-      <label>Date</label>
-      <input type="date" id="fDate" value="{{ date_str }}" max="{{ today }}" onchange="reloadDate()">
-    </div>
-
     <div class="fgroup">
       <label>Search ticker / CA</label>
       <input type="text" id="fSearch" class="search" placeholder="e.g. XBT or 7xK…" oninput="applyFilters()">
     </div>
 
     <div class="fgroup">
-      <label>Calls</label>
-      <div class="frow-inputs">
-        <input type="number" id="fCallsMin" placeholder="min" min="1" oninput="applyFilters()">
-        <span class="separator">—</span>
-        <input type="number" id="fCallsMax" placeholder="max" min="1" oninput="applyFilters()">
+      <label>Calls min</label>
+      <input type="text" id="fCallsMin" style="width:70px" placeholder="e.g. 3" oninput="applyFilters()">
+    </div>
+
+    <div class="fgroup">
+      <label>Market cap</label>
+      <div class="mc-presets" id="mcPresets">
+        <button class="mc-btn active" data-min="" data-max="" onclick="setMc(this)">Any</button>
+        <button class="mc-btn" data-min="" data-max="100000" onclick="setMc(this)">&lt;100K</button>
+        <button class="mc-btn" data-min="100000" data-max="1000000" onclick="setMc(this)">100K–1M</button>
+        <button class="mc-btn" data-min="1000000" data-max="10000000" onclick="setMc(this)">1M–10M</button>
+        <button class="mc-btn" data-min="10000000" data-max="" onclick="setMc(this)">10M+</button>
       </div>
     </div>
 
     <div class="fgroup">
-      <label>Market cap (USD)</label>
-      <div class="frow-inputs">
-        <input type="number" id="fMcMin" placeholder="min" min="0" oninput="applyFilters()">
-        <span class="separator">—</span>
-        <input type="number" id="fMcMax" placeholder="max" min="0" oninput="applyFilters()">
-      </div>
+      <label>First seen after</label>
+      <input type="text" id="fTimeFrom" class="time-input" placeholder="HH:MM" maxlength="5" oninput="applyFilters()">
     </div>
 
-    <div class="fgroup">
-      <label>Time window</label>
-      <div class="frow-inputs">
-        <input type="text" id="fTimeFrom" placeholder="00:00" maxlength="5" oninput="applyFilters()" style="width:70px">
-        <span class="separator">—</span>
-        <input type="text" id="fTimeTo" placeholder="23:59" maxlength="5" oninput="applyFilters()" style="width:70px">
-      </div>
+    <div class="fgroup" style="justify-content: flex-end">
+      <label>&nbsp;</label>
+      <button class="toggle-pill" id="toggleUnknown" onclick="toggleUnknown(this)">
+        <span class="dot"></span> hide unknown
+      </button>
     </div>
 
-    <button class="reset" onclick="resetFilters()">Reset</button>
+    <button class="reset" onclick="resetFilters()">Reset <span class="reset-badge" id="resetBadge" style="display:none">0</span></button>
   </div>
 
   {% if all_launchpads %}
-  <div class="filter-row" style="margin-top: 12px">
-    <div class="fgroup" style="flex: 1">
+  <div class="filter-row" style="margin-top:12px">
+    <div class="fgroup" style="flex:1">
       <label>Launchpad</label>
-      <div class="chips" id="fLpChips">
+      <div class="chips-row" id="fLpChips">
         {% for l in all_launchpads %}
-        <span class="chip" data-value="{{ l }}" onclick="toggleChip(this, 'lp')">{{ l }}</span>
+        <span class="chip" data-value="{{ l }}" onclick="toggleChip(this,'lp')">{{ l }}</span>
         {% endfor %}
-        <span class="chip" data-value="__none__" onclick="toggleChip(this, 'lp')">none</span>
+        <span class="chip" data-value="__none__" onclick="toggleChip(this,'lp')">none</span>
       </div>
     </div>
   </div>
   {% endif %}
 
   {% if all_groups %}
-  <div class="filter-row" style="margin-top: 12px">
-    <div class="fgroup" style="flex: 1; min-width: 0">
+  <div class="filter-row" style="margin-top:10px">
+    <div class="fgroup" style="flex:1;min-width:0">
       <label>Group</label>
-      <div class="chips" id="fGroupChips" style="max-width: none">
+      <div class="chips-row" id="fGroupChips">
         {% for g in all_groups %}
-        <span class="chip" data-value="{{ g }}" onclick="toggleChip(this, 'group')">{{ g }}</span>
+        <span class="chip {% if loop.index > 8 %}group-extra hidden{% endif %}"
+              data-value="{{ g }}" onclick="toggleChip(this,'group')">{{ g }}</span>
         {% endfor %}
+        {% if all_groups|length > 8 %}
+        <span class="chip expand-more" id="groupExpand" onclick="expandGroups()">+{{ all_groups|length - 8 }} more</span>
+        {% endif %}
       </div>
     </div>
   </div>
   {% endif %}
 </div>
 
+<!-- Table -->
 <div class="table-wrap">
 {% if calls %}
 <table id="tbl">
@@ -226,8 +279,7 @@ tr.hidden { display: none; }
       <th data-sort="chg" class="right" onclick="sortBy('chg')">24h</th>
       <th data-sort="mc" class="right" onclick="sortBy('mc')">mc</th>
       <th>groups</th>
-      <th data-sort="first" onclick="sortBy('first')">first</th>
-      <th data-sort="last" onclick="sortBy('last')">last</th>
+      <th data-sort="first" onclick="sortBy('first')">window</th>
     </tr>
   </thead>
   <tbody>
@@ -243,7 +295,8 @@ tr.hidden { display: none; }
         data-lp="{{ c.launchpad or '__none__' }}"
         data-groups="{{ (c.groups_mentioned or '')|lower }}"
         data-first="{{ c.first_seen_at[11:16] }}"
-        data-last="{{ c.last_seen_at[11:16] }}">
+        data-dur="{{ c.duration_min }}"
+        data-known="{{ '1' if c.ticker else '0' }}">
       <td class="num">{{ loop.index }}</td>
       <td class="{{ 'ticker' if c.ticker else 'ticker unknown' }}">{{ c.ticker or 'unknown' }}</td>
       <td class="ca">
@@ -274,12 +327,22 @@ tr.hidden { display: none; }
       <td class="{{ 'group tagged' if c.groups_mentioned else 'group none' }}">
         {{ c.groups_mentioned or '—' }}
       </td>
-      <td class="time">{{ c.first_seen_at[11:16] }}</td>
-      <td class="time">{{ c.last_seen_at[11:16] }}</td>
+      <td class="window">
+        {% if c.duration_str == 'once' %}
+          <span class="w-range">{{ c.first_seen_at[11:16] }}</span>
+          <span class="w-dur">once</span>
+        {% else %}
+          <span class="w-range">{{ c.first_seen_at[11:16] }} → {{ c.last_seen_at[11:16] }}</span>
+          <span class="w-dur">{{ c.duration_str }}</span>
+        {% endif %}
+      </td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
+<p class="empty empty-filter" id="emptyFilter">
+  No tokens match your filters — <a onclick="resetFilters()">Reset</a>
+</p>
 {% else %}
 <p class="empty">No calls for this date.</p>
 {% endif %}
@@ -288,12 +351,39 @@ tr.hidden { display: none; }
 <script>
 const activeFilters = { lp: new Set(), group: new Set() };
 let sortCol = null, sortDir = 1;
+let mcMin = null, mcMax = null;
+let hideUnknown = false;
+let activeCount = 0;
 
-function reloadDate() {
-  const d = document.getElementById('fDate').value;
-  if (d) window.location = '/day?d=' + encodeURIComponent(d);
+// ── date picker fallback ──
+document.getElementById('hiddenDatePicker').addEventListener('change', function() {
+  if (this.value) window.location = '/day?d=' + encodeURIComponent(this.value);
+});
+
+// ── MC presets ──
+function setMc(btn) {
+  document.querySelectorAll('.mc-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  mcMin = btn.dataset.min ? parseFloat(btn.dataset.min) : null;
+  mcMax = btn.dataset.max ? parseFloat(btn.dataset.max) : null;
+  applyFilters();
 }
 
+// ── hide unknown toggle ──
+function toggleUnknown(el) {
+  hideUnknown = !hideUnknown;
+  el.classList.toggle('active', hideUnknown);
+  applyFilters();
+}
+
+// ── group chips expand ──
+function expandGroups() {
+  document.querySelectorAll('.group-extra').forEach(el => el.classList.remove('hidden'));
+  const exp = document.getElementById('groupExpand');
+  if (exp) exp.remove();
+}
+
+// ── chip toggle ──
 function toggleChip(el, kind) {
   const v = el.dataset.value;
   if (activeFilters[kind].has(v)) {
@@ -306,32 +396,27 @@ function toggleChip(el, kind) {
   applyFilters();
 }
 
+// ── time parse ──
 function parseTime(str) {
-  // "HH:MM" → minutes since midnight; returns null if invalid
   if (!str) return null;
   const m = str.match(/^(\d{1,2}):?(\d{2})?$/);
   if (!m) return null;
-  const h = parseInt(m[1]);
-  const mm = parseInt(m[2] || '0');
+  const h = parseInt(m[1]), mm = parseInt(m[2] || '0');
   if (isNaN(h) || isNaN(mm) || h > 23 || mm > 59) return null;
   return h * 60 + mm;
 }
 
 function rowMinutes(t) {
-  // t is "HH:MM"
   if (!t) return null;
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
 }
 
+// ── main filter ──
 function applyFilters() {
   const q = (document.getElementById('fSearch').value || '').trim().toUpperCase();
   const callsMin = parseFloat(document.getElementById('fCallsMin').value) || null;
-  const callsMax = parseFloat(document.getElementById('fCallsMax').value) || null;
-  const mcMin = parseFloat(document.getElementById('fMcMin').value) || null;
-  const mcMax = parseFloat(document.getElementById('fMcMax').value) || null;
   const tFrom = parseTime(document.getElementById('fTimeFrom').value);
-  const tTo = parseTime(document.getElementById('fTimeTo').value);
 
   const rows = document.querySelectorAll('#tbl tbody tr');
   let visible = 0;
@@ -343,16 +428,15 @@ function applyFilters() {
     const calls = parseFloat(r.dataset.calls) || 0;
     const mc = parseFloat(r.dataset.mc) || 0;
     const first = rowMinutes(r.dataset.first);
-    const last = rowMinutes(r.dataset.last);
+    const known = r.dataset.known === '1';
 
     let show = true;
     if (q && !ticker.includes(q) && !ca.includes(q)) show = false;
     if (callsMin != null && calls < callsMin) show = false;
-    if (callsMax != null && calls > callsMax) show = false;
     if (mcMin != null && mc < mcMin) show = false;
     if (mcMax != null && mc > mcMax) show = false;
-    if (tFrom != null && last != null && last < tFrom) show = false;
-    if (tTo != null && first != null && first > tTo) show = false;
+    if (tFrom != null && first != null && first < tFrom) show = false;
+    if (hideUnknown && !known) show = false;
     if (activeFilters.lp.size > 0 && !activeFilters.lp.has(lp)) show = false;
     if (activeFilters.group.size > 0) {
       let match = false;
@@ -366,7 +450,7 @@ function applyFilters() {
     if (show) visible++;
   });
 
-  // Renumber visible rows
+  // renumber
   let i = 1;
   rows.forEach(r => {
     if (!r.classList.contains('hidden')) {
@@ -374,20 +458,44 @@ function applyFilters() {
       if (n) n.textContent = i++;
     }
   });
+
   document.getElementById('visibleCount').textContent = visible;
+
+  // empty state
+  const emptyEl = document.getElementById('emptyFilter');
+  if (emptyEl) emptyEl.style.display = (visible === 0 && rows.length > 0) ? 'block' : 'none';
+
+  // badge
+  activeCount = 0;
+  if (q) activeCount++;
+  if (callsMin != null) activeCount++;
+  if (mcMin != null || mcMax != null) activeCount++;
+  if (tFrom != null) activeCount++;
+  if (hideUnknown) activeCount++;
+  activeCount += activeFilters.lp.size + activeFilters.group.size;
+  const badge = document.getElementById('resetBadge');
+  badge.textContent = activeCount;
+  badge.style.display = activeCount > 0 ? 'inline-block' : 'none';
 }
 
+// ── reset ──
 function resetFilters() {
-  ['fSearch','fCallsMin','fCallsMax','fMcMin','fMcMax','fTimeFrom','fTimeTo'].forEach(id => {
+  ['fSearch','fCallsMin','fTimeFrom'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  mcMin = null; mcMax = null;
+  document.querySelectorAll('.mc-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.mc-btn[data-min=""][data-max=""]').classList.add('active');
+  hideUnknown = false;
+  document.getElementById('toggleUnknown').classList.remove('active');
   activeFilters.lp.clear();
   activeFilters.group.clear();
   document.querySelectorAll('.chip.active').forEach(c => c.classList.remove('active'));
   applyFilters();
 }
 
+// ── sort ──
 function sortBy(col) {
   const tbody = document.querySelector('#tbl tbody');
   const rows = Array.from(tbody.querySelectorAll('tr'));
@@ -405,6 +513,23 @@ function sortBy(col) {
   applyFilters();
 }
 
-setTimeout(() => location.reload(), 120000);
+// ── sticky shadow ──
+const fp = document.getElementById('filterPanel');
+window.addEventListener('scroll', () => {
+  fp.classList.toggle('shadowed', window.scrollY > 10);
+});
+
+// ── countdown refresh ──
+let secs = 120;
+const sub = document.getElementById('subRefresh');
+const baseText = sub ? sub.textContent : '';
+function tick() {
+  secs--;
+  if (secs <= 0) { location.reload(); return; }
+  const m = Math.floor(secs / 60), s = secs % 60;
+  if (sub) sub.textContent = baseText + '  ·  ' + m + ':' + String(s).padStart(2,'0');
+  setTimeout(tick, 1000);
+}
+setTimeout(tick, 1000);
 </script>
 {% endblock %}
