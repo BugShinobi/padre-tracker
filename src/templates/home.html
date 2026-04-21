@@ -86,6 +86,50 @@ tr:hover td { background: #141922; }
   color: #8ed8a5; font-size: 0.78rem; max-width: 240px; overflow: hidden;
   text-overflow: ellipsis; display: inline-block; vertical-align: middle;
 }
+
+/* Live feed */
+.live-section {
+  padding: 20px 28px; border-bottom: 1px solid #1f242b;
+  display: grid; grid-template-columns: 1fr 340px; gap: 28px;
+}
+@media (max-width: 900px) { .live-section { grid-template-columns: 1fr; } }
+.live-section h2, .section h2 {
+  font-size: 0.76rem; color: #8a93a0; text-transform: uppercase;
+  letter-spacing: 0.12em; font-weight: 600; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.live-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: #5aad6f;
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; } 50% { opacity: 0.3; }
+}
+.live-feed {
+  height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px;
+}
+.live-feed::-webkit-scrollbar { width: 4px; }
+.live-feed::-webkit-scrollbar-track { background: transparent; }
+.live-feed::-webkit-scrollbar-thumb { background: #2d3540; border-radius: 2px; }
+.feed-row {
+  display: grid; grid-template-columns: 70px 80px 1fr auto;
+  align-items: center; gap: 10px; padding: 7px 10px; border-radius: 4px;
+  background: #0d0f12; border: 1px solid transparent;
+  font-size: .8rem; transition: border-color .1s;
+}
+.feed-row:hover { border-color: #2d3540; }
+.feed-row.feed-new { animation: feedIn .4s ease-out; border-color: #1e3a1e; }
+@keyframes feedIn { from { background: #1a2e1a; } to { background: #0d0f12; } }
+.feed-time { color: #4a5260; font-family: 'SF Mono', monospace; font-size: .72rem; }
+.feed-ticker { color: #fff; font-weight: 700; font-family: 'SF Mono', monospace; }
+.feed-ticker.unknown { color: #4a5260; font-weight: 400; font-style: italic; }
+.feed-group { color: #8ed8a5; font-size: .76rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-lp { font-size: .68rem; padding: 1px 5px; border-radius: 3px; text-align: right; }
+.feed-calls { color: #6aa6ff; font-size: .72rem; text-align: right; white-space: nowrap; }
+.feed-empty { color: #4a5260; padding: 20px; text-align: center; font-size: .85rem; }
+
+/* Chart */
+.chart-container { position: relative; height: 160px; }
 </style>
 {% endblock %}
 
@@ -127,18 +171,19 @@ tr:hover td { background: #141922; }
   </div>
 </div>
 
-<div class="section">
-  <h2>Today — new tokens per hour</h2>
-  <div class="chart">
-    {% for h in hourly_today %}
-    <div class="bar {% if h.new_tokens == 0 %}empty{% endif %}"
-         style="height: {{ (h.new_tokens / hourly_max * 100) if hourly_max > 0 else 0 }}%"
-         title="{{ '%02d:00'|format(h.hour) }} — {{ h.new_tokens }} new">
+<!-- Live feed + hourly chart side by side -->
+<div class="live-section">
+  <div>
+    <h2><span class="live-dot"></span> Live feed — today's calls</h2>
+    <div class="live-feed" id="liveFeed">
+      <div class="feed-empty" id="feedEmpty">Waiting for new calls…</div>
     </div>
-    {% endfor %}
   </div>
-  <div class="chart-x">
-    <span>00</span><span>06</span><span>12</span><span>18</span><span>23</span>
+  <div>
+    <h2>Today — new tokens per hour</h2>
+    <div class="chart-container">
+      <canvas id="hourlyChart"></canvas>
+    </div>
   </div>
 </div>
 
@@ -234,7 +279,108 @@ tr:hover td { background: #141922; }
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
-setTimeout(() => location.reload(), 60000);
+// ── Hourly chart ──
+const hourlyData = {{ hourly_today | tojson }};
+new Chart(document.getElementById('hourlyChart'), {
+  type: 'bar',
+  data: {
+    labels: hourlyData.map(h => h.hour.toString().padStart(2,'0') + ':00'),
+    datasets: [{
+      data: hourlyData.map(h => h.new_tokens),
+      backgroundColor: hourlyData.map(h => h.new_tokens > 0 ? '#4a6fa5' : '#1f242b'),
+      borderColor: hourlyData.map(h => h.new_tokens > 0 ? '#6aa6ff' : 'transparent'),
+      borderWidth: 1,
+      borderRadius: 2,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: {
+      callbacks: { label: ctx => ` ${ctx.raw} new tokens` },
+      backgroundColor: '#141922', titleColor: '#8a93a0', bodyColor: '#e8ebef',
+      borderColor: '#2d3540', borderWidth: 1,
+    }},
+    scales: {
+      x: { grid: { color: '#1f242b' }, ticks: { color: '#4a5260', font: { size: 10 },
+           maxTicksLimit: 8 }},
+      y: { grid: { color: '#1f242b' }, ticks: { color: '#4a5260', font: { size: 10 },
+           stepSize: 1 }, beginAtZero: true },
+    }
+  }
+});
+
+// ── Live feed polling ──
+const LP_COLORS = { 'pump.fun': '#b28cff', 'bags.fm': '#ffb46e', 'moonshot': '#6ed2ff', 'bonk.fun': '#ff9090', 'printr': '#8eeebc' };
+let lastTs = Date.now() / 1000 - 300; // start: last 5 min
+let feedCount = 0;
+
+function fmtTime(isoStr) {
+  if (!isoStr) return '';
+  const t = isoStr.includes('T') ? isoStr.split('T')[1] : isoStr.split(' ')[1] || '';
+  return t.slice(0, 5);
+}
+
+function addFeedRow(call, isNew) {
+  const feed = document.getElementById('liveFeed');
+  const empty = document.getElementById('feedEmpty');
+  if (empty) empty.remove();
+
+  const row = document.createElement('div');
+  row.className = 'feed-row' + (isNew ? ' feed-new' : '');
+
+  const lpColor = LP_COLORS[call.launchpad] || '#6b7380';
+  const lpBg = call.launchpad ? `background:${lpColor}22;color:${lpColor}` : 'color:#4a5260';
+
+  row.innerHTML = `
+    <span class="feed-time">${fmtTime(call.first_seen_at)}</span>
+    <span class="${call.ticker ? 'feed-ticker' : 'feed-ticker unknown'}">${call.ticker || '???'}</span>
+    <span class="feed-group">${call.groups_mentioned || '—'}</span>
+    <span class="feed-calls">${call.call_count > 1 ? call.call_count + '×' : ''}</span>
+  `;
+
+  if (isNew) {
+    feed.insertBefore(row, feed.firstChild);
+  } else {
+    feed.appendChild(row);
+  }
+  feedCount++;
+}
+
+async function pollFeed() {
+  try {
+    const r = await fetch('/api/latest?since=' + lastTs);
+    const calls = await r.json();
+    if (calls.length > 0) {
+      // Update lastTs to most recent
+      const maxTs = Math.max(...calls.map(c => new Date(c.first_seen_at).getTime() / 1000));
+      lastTs = maxTs;
+      calls.forEach(c => addFeedRow(c, true));
+      // Update live KPI counters
+      updateStats();
+    }
+  } catch(e) { /* fail silently */ }
+  setTimeout(pollFeed, 5000);
+}
+
+async function updateStats() {
+  try {
+    const r = await fetch('/api/stats');
+    const d = await r.json();
+    const els = document.querySelectorAll('.kpi .val');
+    if (els[0]) els[0].textContent = d.tokens_today;
+    if (els[1]) els[1].textContent = d.calls_today;
+  } catch(e) {}
+}
+
+// Load last 5 min of history on init
+fetch('/api/latest?since=' + lastTs).then(r => r.json()).then(calls => {
+  calls.reverse().forEach(c => addFeedRow(c, false));
+  if (calls.length > 0) {
+    lastTs = Math.max(...calls.map(c => new Date(c.first_seen_at).getTime() / 1000));
+  }
+  setTimeout(pollFeed, 5000);
+});
 </script>
 {% endblock %}

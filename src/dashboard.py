@@ -14,7 +14,7 @@ import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 
 import aggregations as agg
 from aggregations import get_lifetime_windows
@@ -233,14 +233,19 @@ def day():
             cas = [r["contract_address"] for r in calls]
             prices = get_prices(conn, cas)
             lifetime = get_lifetime_windows(conn, cas)
-            # GMGN: read from cache only — scraper pre-warms new tokens
-            gmgn_init_cache(conn)
-            placeholders = ",".join("?" * len(cas))
-            gmgn_rows = conn.execute(
-                f"SELECT * FROM token_gmgn WHERE contract_address IN ({placeholders})",
-                tuple(cas),
-            ).fetchall()
-            gmgn_data = {row["contract_address"]: dict(row) for row in gmgn_rows}
+            # GMGN: fetch live for top-30 by call_count; rest read from cache
+            top30_cas = [r["contract_address"] for r in sorted(calls, key=lambda x: x["call_count"], reverse=True)[:30]]
+            gmgn_data = get_gmgn(conn, top30_cas)
+            # Cache-only for remaining CAs
+            rest_cas = [ca for ca in cas if ca not in gmgn_data]
+            if rest_cas:
+                gmgn_init_cache(conn)
+                ph = ",".join("?" * len(rest_cas))
+                rest_rows = conn.execute(
+                    f"SELECT * FROM token_gmgn WHERE contract_address IN ({ph})",
+                    tuple(rest_cas),
+                ).fetchall()
+                gmgn_data.update({r["contract_address"]: dict(r) for r in rest_rows})
         finally:
             conn.close()
         for r in calls:
@@ -384,6 +389,22 @@ def range_view():
         "top_launchpad": max(lp_counts, key=lp_counts.get) if lp_counts else None,
     }
 
+    # Per-day series for the chart
+    conn2 = _conn()
+    try:
+        day_series = conn2.execute(
+            """SELECT call_date, COUNT(*) AS tokens, COALESCE(SUM(call_count),0) AS total_calls
+               FROM calls WHERE call_date >= ? AND call_date <= ?
+               GROUP BY call_date ORDER BY call_date""",
+            (d_from.isoformat(), d_to.isoformat()),
+        ).fetchall()
+        day_series = [dict(r) for r in day_series]
+    finally:
+        conn2.close()
+
+    # Top groups for chart
+    top_groups_chart = sorted(group_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+
     return render_template(
         "range.html",
         active_nav="range",
@@ -394,7 +415,66 @@ def range_view():
         date_from=d_from.isoformat(),
         date_to=d_to.isoformat(),
         today=today.isoformat(),
+        day_series=day_series,
+        top_groups_chart=top_groups_chart,
     )
+
+
+@app.route("/api/latest")
+def api_latest():
+    """Return calls inserted/updated since `since` unix timestamp (default: last 30s).
+
+    Used by the live feed panel to poll for new tokens without a full page reload.
+    """
+    try:
+        since_ts = float(request.args.get("since", 0))
+    except (ValueError, TypeError):
+        since_ts = 0
+
+    if not Path(DB_PATH).exists():
+        return jsonify([])
+
+    # Convert unix timestamp to ISO string for SQLite comparison
+    since_iso = datetime.fromtimestamp(since_ts).isoformat() if since_ts else "1970-01-01"
+
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            """SELECT contract_address, ticker, launchpad, call_count,
+                      first_seen_at, last_seen_at, groups_mentioned, call_date
+               FROM calls
+               WHERE first_seen_at > ?
+               ORDER BY first_seen_at DESC
+               LIMIT 50""",
+            (since_iso,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["ts"] = d["first_seen_at"]
+        result.append(d)
+
+    return jsonify(result)
+
+
+@app.route("/api/stats")
+def api_stats():
+    """Quick stats for the live header counter."""
+    if not Path(DB_PATH).exists():
+        return jsonify({"tokens_today": 0, "calls_today": 0})
+    conn = _conn()
+    try:
+        today = date.today().isoformat()
+        row = conn.execute(
+            "SELECT COUNT(*) AS t, COALESCE(SUM(call_count),0) AS c FROM calls WHERE call_date=?",
+            (today,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return jsonify({"tokens_today": row["t"], "calls_today": row["c"]})
 
 
 if __name__ == "__main__":

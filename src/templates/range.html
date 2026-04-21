@@ -146,6 +146,18 @@ tr.hidden { display: none; }
 .empty { color: #5a6370; padding: 60px 0; text-align: center; font-size: .95rem; }
 .empty a { color: #6aa6ff; cursor: pointer; }
 .empty-filter { display: none; }
+
+/* Charts */
+.charts-row {
+  display: grid; grid-template-columns: 1fr 300px; gap: 24px;
+  padding: 20px 28px; border-bottom: 1px solid #1f242b;
+}
+@media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
+.charts-row h3 {
+  font-size: .68rem; color: #6b7380; text-transform: uppercase;
+  letter-spacing: .1em; font-weight: 600; margin-bottom: 10px;
+}
+.chart-box { position: relative; height: 140px; }
 </style>
 {% endblock %}
 
@@ -199,6 +211,20 @@ tr.hidden { display: none; }
   </div>
   {% endif %}
 </div>
+
+<!-- Charts -->
+{% if day_series %}
+<div class="charts-row">
+  <div>
+    <h3>Tokens per day</h3>
+    <div class="chart-box"><canvas id="dayChart"></canvas></div>
+  </div>
+  <div>
+    <h3>Top groups</h3>
+    <div class="chart-box"><canvas id="groupChart"></canvas></div>
+  </div>
+</div>
+{% endif %}
 
 <!-- Filter panel -->
 <div class="filters" id="filterPanel">
@@ -480,4 +506,58 @@ function sortBy(col) {
 const fp = document.getElementById('filterPanel');
 window.addEventListener('scroll', () => { fp.classList.toggle('shadowed', window.scrollY > 10); });
 </script>
+
+{% if day_series %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+const CHART_OPTS = {
+  responsive: true, maintainAspectRatio: false,
+  plugins: { legend: { display: false }, tooltip: {
+    backgroundColor: '#141922', titleColor: '#8a93a0', bodyColor: '#e8ebef',
+    borderColor: '#2d3540', borderWidth: 1,
+  }},
+};
+
+const daySeries = {{ day_series | tojson }};
+new Chart(document.getElementById('dayChart'), {
+  type: 'bar',
+  data: {
+    labels: daySeries.map(d => d.call_date.slice(5)),
+    datasets: [
+      { label: 'tokens', data: daySeries.map(d => d.tokens),
+        backgroundColor: '#4a6fa566', borderColor: '#6aa6ff', borderWidth: 1, borderRadius: 2 },
+      { label: 'calls', data: daySeries.map(d => d.total_calls),
+        backgroundColor: '#2a3a2a88', borderColor: '#5aad6f', borderWidth: 1, borderRadius: 2,
+        yAxisID: 'y2' },
+    ]
+  },
+  options: { ...CHART_OPTS,
+    plugins: { ...CHART_OPTS.plugins, legend: { display: true, labels: { color: '#6b7380', font: { size: 10 } } } },
+    scales: {
+      x: { grid: { color: '#1f242b' }, ticks: { color: '#4a5260', font: { size: 10 } } },
+      y: { grid: { color: '#1f242b' }, ticks: { color: '#4a5260', font: { size: 10 } }, beginAtZero: true, title: { display: true, text: 'tokens', color: '#4a5260', font: { size: 9 } } },
+      y2: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#4a5260', font: { size: 10 } }, beginAtZero: true, title: { display: true, text: 'calls', color: '#4a5260', font: { size: 9 } } },
+    }
+  }
+});
+
+const topGroups = {{ top_groups_chart | tojson }};
+if (topGroups.length > 0) {
+  new Chart(document.getElementById('groupChart'), {
+    type: 'bar',
+    data: {
+      labels: topGroups.map(g => g[0]),
+      datasets: [{ data: topGroups.map(g => g[1]),
+        backgroundColor: '#2a3a4a', borderColor: '#4a6fa5', borderWidth: 1, borderRadius: 2 }]
+    },
+    options: { ...CHART_OPTS, indexAxis: 'y',
+      scales: {
+        x: { grid: { color: '#1f242b' }, ticks: { color: '#4a5260', font: { size: 10 } }, beginAtZero: true },
+        y: { grid: { color: 'transparent' }, ticks: { color: '#8a93a0', font: { size: 10 } } },
+      }
+    }
+  });
+}
+</script>
+{% endif %}
 {% endblock %}

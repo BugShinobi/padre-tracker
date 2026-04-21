@@ -104,7 +104,10 @@ _JS_EXTRACT = """
         }
 
         // Clean leading row-number / time noise like "23 ", "5m ago ", etc.
+        // Strip leading row-number / time noise: "23 ", "5m ago ", timestamps, etc.
         let cleaned = text.replace(/^[\\d\\s:.,]+(?:s|m|h|d|sec|min|hr|ago)?\\s*/i, '');
+        // Strip leading emoji and non-ASCII symbols that precede the actual ticker
+        cleaned = cleaned.replace(/^[^\\x20-\\x7E\\$]+/, '').replace(/^[^A-Za-z$]+/, '');
 
         // Group: "mentioned in <Group>" / "in <Group>" (capital start, 2-30 chars)
         let group = '';
@@ -113,10 +116,24 @@ _JS_EXTRACT = """
         if (gm1) group = gm1[1].trim();
         else if (gm2) group = gm2[1].trim();
 
-        // Ticker: 2-12 chars starting with letter/$, not pure digits.
-        const tm = cleaned.match(/^\\$?([A-Za-z][A-Z0-9a-z]{1,11})\\b/);
-        let ticker = tm ? tm[1].toUpperCase() : '';
-        if (/^\\d+$/.test(ticker)) ticker = '';
+        // Ticker extraction — priority order:
+        // 1. Explicit $TICKER anywhere in text (most reliable signal on Padre)
+        // 2. First ALL-CAPS word (2-12 chars) in cleaned text
+        // 3. First capitalized word at start of cleaned text
+        let ticker = '';
+        const dollarMatch = text.match(/\\$([A-Z][A-Z0-9]{1,11})\\b/);
+        if (dollarMatch) {
+            ticker = dollarMatch[1];
+        } else {
+            const capsMatch = cleaned.match(/\\b([A-Z][A-Z0-9]{1,11})\\b/);
+            if (capsMatch) ticker = capsMatch[1];
+            else {
+                const anyMatch = cleaned.match(/^([A-Za-z][A-Za-z0-9]{1,11})\\b/);
+                if (anyMatch) ticker = anyMatch[1].toUpperCase();
+            }
+        }
+        // Drop pure-digit strings or single chars
+        if (/^\\d+$/.test(ticker) || ticker.length < 2) ticker = '';
 
         results.push({ ca, ticker, group, adMarker, _text: text.slice(0, 160) });
     }

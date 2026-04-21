@@ -59,6 +59,35 @@ def _gmgn_prewarm(db_path: str, ca: str) -> None:
         log.debug("GMGN prewarm failed for %s: %s", ca[:8], e)
 
 
+def _gmgn_backfill(db_path: str) -> None:
+    """Startup backfill: fetch GMGN for recent CAs not yet in cache (background thread)."""
+    try:
+        c = sqlite3.connect(db_path)
+        c.row_factory = sqlite3.Row
+        from src.gmgn import init_cache as _ginit
+        _ginit(c)
+        rows = c.execute(
+            """SELECT DISTINCT calls.contract_address
+               FROM calls
+               LEFT JOIN token_gmgn g ON calls.contract_address = g.contract_address
+               WHERE calls.call_date >= date('now', '-3 days')
+                 AND g.contract_address IS NULL
+               LIMIT 200"""
+        ).fetchall()
+        cas = [r["contract_address"] for r in rows]
+        c.close()
+        if not cas:
+            return
+        log.info("GMGN backfill: %d CAs without cache", len(cas))
+        c2 = sqlite3.connect(db_path)
+        c2.row_factory = sqlite3.Row
+        get_gmgn(c2, cas)
+        c2.close()
+        log.info("GMGN backfill complete")
+    except Exception as e:
+        log.warning("GMGN backfill error: %s", e)
+
+
 def setup_dirs():
     for d in [SESSION_DIR, CSV_DIR, "logs"]:
         Path(d).mkdir(parents=True, exist_ok=True)
@@ -88,6 +117,10 @@ def main():
     reset = reset_today_counts(conn)
     if reset:
         log.info("Reset call_count=1 on %d today-rows (fixing pre-bug inflated counters)", reset)
+
+    # GMGN backfill in background — fetch data for recent CAs missing from cache
+    threading.Thread(target=_gmgn_backfill, args=(DB_PATH,), daemon=True).start()
+
     pw, context = launch_browser(SESSION_DIR)
     register_page_listeners(context)
     page = get_live_page(context)
