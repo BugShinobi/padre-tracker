@@ -8,8 +8,22 @@ Type=simple
 User=cokle
 WorkingDirectory=/home/cokle/padre-tracker
 ExecStart=/usr/bin/xvfb-run -a /home/cokle/padre-tracker/.venv/bin/python main.py
+
+# Belt-and-suspenders: on stop/restart, nuke any child that escaped the cgroup.
+# Matches only processes inside the padre-tracker dir — won't touch unrelated chromium instances.
+ExecStopPost=/bin/bash -c 'pkill -9 -f "padre-tracker/.venv/bin/python main.py" ; pkill -9 -f "Xvfb :99" ; pkill -9 -f "padre-tracker/data/session" ; exit 0'
+
 Restart=always
 RestartSec=15
+
+# Force full-cgroup kill + generous timeout so chromium children flush cleanly.
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Hard memory cap — if the process leaks, OOM-kill instead of eating the server.
+MemoryMax=1500M
+
 Environment=LOG_LEVEL=INFO
 
 StandardOutput=journal
