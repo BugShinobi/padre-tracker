@@ -17,7 +17,9 @@ from pathlib import Path
 from flask import Flask, render_template, request
 
 import aggregations as agg
+from aggregations import get_lifetime_windows
 from enrich import get_prices
+from gmgn import get_gmgn, init_cache as gmgn_init_cache
 
 DB_PATH = os.getenv("DB_PATH", "./data/calls.db")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -51,6 +53,12 @@ def _fmt_big(v: float | None) -> str:
         if v >= div:
             return f"{v/div:.2f}{unit}"
     return f"{v:.0f}"
+
+
+def _fmt_pct(v: float | None) -> str:
+    if v is None:
+        return "—"
+    return f"{v * 100:.1f}%" if v <= 1.0 else f"{v:.1f}%"
 
 
 def _delta(curr: int, prev: int) -> dict:
@@ -87,10 +95,12 @@ def home():
         t_delta = _delta(data["today"]["tokens"], data["yesterday"]["tokens"])
         c_delta = _delta(data["today"]["total_calls"], data["yesterday"]["total_calls"])
 
-        # Enrich top 10 with DexScreener (batched, cached)
+        # Enrich top 10 with DexScreener + GMGN (batched/cached)
         top = data["top_tokens_week"]
         if top:
-            prices = get_prices(conn, [t["contract_address"] for t in top])
+            top_cas = [t["contract_address"] for t in top]
+            prices = get_prices(conn, top_cas)
+            gmgn_data = get_gmgn(conn, top_cas)
             for t in top:
                 p = prices.get(t["contract_address"]) or {}
                 t["price_usd"] = p.get("price_usd")
@@ -98,6 +108,15 @@ def home():
                 t["price_change_h24"] = p.get("price_change_h24")
                 t["market_cap"] = p.get("market_cap")
                 t["mc_fmt"] = _fmt_big(p.get("market_cap"))
+                g = gmgn_data.get(t["contract_address"]) or {}
+                t["holder_count"] = g.get("holder_count")
+                t["top10_pct"] = g.get("top10_pct")
+                t["renounced"] = g.get("renounced")
+                t["mint_revoked"] = g.get("mint_revoked")
+                t["freeze_revoked"] = g.get("freeze_revoked")
+                t["lp_burned_pct"] = g.get("lp_burned_pct")
+                t["twitter"] = g.get("twitter")
+                t["telegram"] = g.get("telegram")
 
         hourly_max = max((h["new_tokens"] for h in data["hourly_today"]), default=0)
 
@@ -208,11 +227,21 @@ def day():
     # All filtering is client-side for instant UX.
     calls, stats, all_groups, all_launchpads = _daily_data(target)
 
-    # Enrich all rows with price + MC so client-side MC filter works.
+    # Enrich all rows with price + MC + lifetime windows + GMGN (cache-only for speed).
     if calls:
         conn = _conn()
         try:
-            prices = get_prices(conn, [r["contract_address"] for r in calls])
+            cas = [r["contract_address"] for r in calls]
+            prices = get_prices(conn, cas)
+            lifetime = get_lifetime_windows(conn, cas)
+            # GMGN: read from cache only — scraper pre-warms new tokens
+            gmgn_init_cache(conn)
+            placeholders = ",".join("?" * len(cas))
+            gmgn_rows = conn.execute(
+                f"SELECT * FROM token_gmgn WHERE contract_address IN ({placeholders})",
+                tuple(cas),
+            ).fetchall()
+            gmgn_data = {row["contract_address"]: dict(row) for row in gmgn_rows}
         finally:
             conn.close()
         for r in calls:
@@ -222,6 +251,26 @@ def day():
             r["price_change_h24"] = p.get("price_change_h24")
             r["market_cap"] = p.get("market_cap") or 0
             r["mc_fmt"] = _fmt_big(p.get("market_cap"))
+            lw = lifetime.get(r["contract_address"]) or {}
+            r["lifetime_first"] = (lw.get("first_ever") or "")[:10]
+            r["lifetime_last"] = (lw.get("last_ever") or "")[:10]
+            r["lifetime_calls"] = lw.get("lifetime_calls") or r["call_count"]
+            r["days_active"] = lw.get("days_active") or 1
+            r["is_recall"] = r["lifetime_first"] and r["lifetime_first"] < target.isoformat()
+            g = gmgn_data.get(r["contract_address"]) or {}
+            r["holder_count"] = g.get("holder_count")
+            r["top10_pct"] = _fmt_pct(g.get("top10_pct"))
+            r["renounced"] = g.get("renounced")
+            r["mint_revoked"] = g.get("mint_revoked")
+            r["freeze_revoked"] = g.get("freeze_revoked")
+            r["lp_burned_pct"] = _fmt_pct(g.get("lp_burned_pct"))
+            r["twitter"] = g.get("twitter")
+            r["telegram"] = g.get("telegram")
+            r["website"] = g.get("website")
+            r["buys_5m"] = g.get("buys_5m")
+            r["sells_5m"] = g.get("sells_5m")
+            r["smart_buyers"] = g.get("smart_buyers")
+            r["sniper_count"] = g.get("sniper_count")
 
     return render_template(
         "day.html",

@@ -50,6 +50,27 @@ _JS_EXTRACT = """
         /[?&\\/](?:mint|token|ca|address)=([1-9A-HJ-NP-Za-km-z]{32,44})/,
     ];
 
+    // Sponsored/ad markers — any ancestor or sibling text matching = skip
+    const AD_RE = /\\bDEX\\s*Paid\\b|\\bX\\s*Motions?\\b|\\bSponsored\\b|\\bPromoted\\b|\\bBoosted\\b/i;
+
+    function findAdMarker(startEl) {
+        let cur = startEl;
+        while (cur && cur !== document.body) {
+            // Check immediate children for badge-like short text (no sub-links)
+            for (const child of (cur.children || [])) {
+                const ct = (child.innerText || '').trim();
+                if (ct.length > 0 && ct.length < 40 && AD_RE.test(ct)) return ct;
+            }
+            // Check this node's own direct text nodes
+            const ownText = Array.from(cur.childNodes)
+                .filter(n => n.nodeType === 3)
+                .map(n => n.textContent).join(' ').trim();
+            if (ownText.length < 40 && AD_RE.test(ownText)) return ownText;
+            cur = cur.parentElement;
+        }
+        return null;
+    }
+
     const results = [];
     const seen = new Set();
 
@@ -66,15 +87,21 @@ _JS_EXTRACT = """
         // Walk up DOM to find a container with readable text
         let el = link;
         let text = '';
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 8; i++) {
             el = el.parentElement;
             if (!el) break;
             const t = (el.innerText || '').trim();
             if (t.length > 3 && t.length < 600) { text = t; break; }
         }
 
-        // DEX Paid is a sponsored event on Padre, NOT a group call — skip it
-        const dexPaid = /\\bDEX\\s*Paid\\b/i.test(text);
+        // Detect ad/sponsored — check text first, then full ancestor chain
+        let adMarker = null;
+        const quickMatch = text.match(AD_RE);
+        if (quickMatch) {
+            adMarker = quickMatch[0];
+        } else {
+            adMarker = findAdMarker(link);
+        }
 
         // Clean leading row-number / time noise like "23 ", "5m ago ", etc.
         let cleaned = text.replace(/^[\\d\\s:.,]+(?:s|m|h|d|sec|min|hr|ago)?\\s*/i, '');
@@ -91,7 +118,7 @@ _JS_EXTRACT = """
         let ticker = tm ? tm[1].toUpperCase() : '';
         if (/^\\d+$/.test(ticker)) ticker = '';
 
-        results.push({ ca, ticker, group, dexPaid, _text: text.slice(0, 160) });
+        results.push({ ca, ticker, group, adMarker, _text: text.slice(0, 160) });
     }
     return results;
 }
@@ -224,7 +251,7 @@ def scrape_alpha_tracker(
     calls = []
     skipped_lp = 0
     skipped_quality = 0
-    skipped_dexpaid = 0
+    skipped_ad = 0
     for i, item in enumerate(raw):
         ca = (item.get("ca") or "").strip()
         if not ca or ca in _BLACKLIST_CA:
@@ -235,12 +262,20 @@ def scrape_alpha_tracker(
             ticker = ""
         group = (item.get("group") or "").strip()
         launchpad = detect_launchpad(ca)
+        ad_marker = item.get("adMarker")
 
-        if item.get("dexPaid"):
-            skipped_dexpaid += 1
-            if i < 5:
-                log.info("SKIP_DEX [%d] %s (DEX Paid event) %r", i, ca[:8], item.get("_text", "")[:80])
+        # Skip known ad/sponsored events (DEX Paid, X Motions, Sponsored, etc.)
+        if ad_marker:
+            skipped_ad += 1
+            log.info("SKIP_AD  [%d] %s marker=%r %r", i, ca[:8], ad_marker, item.get("_text", "")[:80])
             continue
+
+        # Conservative: if no group AND no ticker AND no launchpad, almost certainly an ad
+        if require_quality and not group and not ticker and not launchpad:
+            skipped_ad += 1
+            log.info("SKIP_AD  [%d] %s (no group+ticker+launchpad) %r", i, ca[:8], item.get("_text", "")[:80])
+            continue
+
         if launchpad and launchpad in ignore_launchpads:
             skipped_lp += 1
             if i < 5:
@@ -263,12 +298,12 @@ def scrape_alpha_tracker(
             "groups_mentioned": group or None,
         })
 
-    if not calls and not skipped_lp and not skipped_quality:
+    if not calls and not skipped_lp and not skipped_quality and not skipped_ad:
         log.warning("No calls found — page may need login or Padre changed its DOM. Run with --dump to inspect.")
 
     log.info(
-        "Scraped: %d kept, %d skipped (lp=%d, quality=%d, dex=%d)",
-        len(calls), skipped_lp + skipped_quality + skipped_dexpaid,
-        skipped_lp, skipped_quality, skipped_dexpaid,
+        "Scraped: %d kept, %d skipped (lp=%d, quality=%d, ad=%d)",
+        len(calls), skipped_lp + skipped_quality + skipped_ad,
+        skipped_lp, skipped_quality, skipped_ad,
     )
     return calls

@@ -3,7 +3,9 @@
 import logging
 import os
 import signal
+import sqlite3
 import sys
+import threading
 import time
 from datetime import date
 from pathlib import Path
@@ -15,6 +17,7 @@ from src.db import (
     purge_low_quality, purge_no_group, record_new_call, reset_today_counts, touch_seen,
 )
 from src.export_csv import export_daily_csv
+from src.gmgn import get_gmgn
 from src.scraper import (
     detect_launchpad, dump_page_html, get_live_page,
     launch_browser, navigate_to_alpha, register_page_listeners, scrape_alpha_tracker,
@@ -43,6 +46,17 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger("padre-tracker")
+
+
+def _gmgn_prewarm(db_path: str, ca: str) -> None:
+    """Fire-and-forget: fetch GMGN data for a single CA into the cache."""
+    try:
+        c = sqlite3.connect(db_path)
+        c.row_factory = sqlite3.Row
+        get_gmgn(c, [ca])
+        c.close()
+    except Exception as e:
+        log.debug("GMGN prewarm failed for %s: %s", ca[:8], e)
 
 
 def setup_dirs():
@@ -139,6 +153,10 @@ def main():
                             "NEW    %s  ticker=%s  launchpad=%s  groups=%s",
                             ca, call.get("ticker"), call.get("launchpad"), call.get("groups_mentioned"),
                         )
+                        # Pre-warm GMGN cache in background so dashboard reads are instant
+                        threading.Thread(
+                            target=_gmgn_prewarm, args=(DB_PATH, ca), daemon=True
+                        ).start()
                     elif result == "RECALL":
                         log.info("RECALL %s  (re-appeared on feed)", ca)
                 else:

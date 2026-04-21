@@ -124,8 +124,17 @@ tr.hidden { display: none; }
 .num { color: #5a6370; font-variant-numeric: tabular-nums; width: 36px; }
 .ticker { color: #fff; font-weight: 600; font-family: 'SF Mono', Menlo, Consolas, monospace; }
 .ticker.unknown { color: #4a5260; font-weight: 400; font-style: italic; font-size: .82rem; }
-.ca a { color: #6aa6ff; text-decoration: none; font-size: .78rem; font-family: 'SF Mono', Menlo, Consolas, monospace; }
-.ca a:hover { text-decoration: underline; }
+.ca { display: flex; align-items: center; gap: 6px; }
+.ca .ca-mono { color: #6aa6ff; font-size: .78rem; font-family: 'SF Mono', Menlo, Consolas, monospace; }
+.ca-links { display: flex; gap: 3px; }
+.ca-links a {
+  font-size: .68rem; font-weight: 700; padding: 1px 5px; border-radius: 3px;
+  text-decoration: none; line-height: 1.4; letter-spacing: .03em;
+}
+.ca-links a:hover { opacity: .75; text-decoration: none; }
+.ca-links a.lnk-d { background: #1a2a3a; color: #6aa6ff; }
+.ca-links a.lnk-g { background: #1a3a2a; color: #7ee8a0; }
+.ca-links a.lnk-p { background: #2e1f3a; color: #c49dff; }
 .calls { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
 .calls.hot  { color: #ffb347; }
 .calls.warm { color: #e8ebef; }
@@ -139,12 +148,26 @@ tr.hidden { display: none; }
 .window { font-size: .78rem; font-family: 'SF Mono', Menlo, Consolas, monospace; }
 .window .w-range { color: #8a93a0; }
 .window .w-dur { color: #4a5260; font-size: .72rem; display: block; margin-top: 2px; }
+.window .w-lifetime { color: #4a5260; font-size: .69rem; display: block; margin-top: 3px; }
+.window .w-recall { color: #c49dff; font-size: .68rem; margin-left: 4px; }
 .row-hot td { border-left: 3px solid #ffb347; }
 .row-hot td:first-child { padding-left: 11px; }
 
 .empty { color: #5a6370; padding: 60px 0; text-align: center; font-size: .95rem; }
 .empty a { color: #6aa6ff; cursor: pointer; }
 .empty-filter { display: none; }
+
+.holders { text-align: right; font-size: .8rem; font-variant-numeric: tabular-nums; color: #8a93a0; }
+.flags { font-size: .78rem; white-space: nowrap; }
+.flag { display: inline-block; padding: 1px 4px; border-radius: 3px; margin-right: 2px; font-size: .68rem; font-weight: 600; }
+.flag.ok { background: #1a3a2a; color: #7ee8a0; }
+.flag.warn { background: #3a2020; color: #ff9090; }
+.social-links { display: flex; gap: 3px; }
+.social-links a { font-size: .7rem; padding: 1px 5px; border-radius: 3px; text-decoration: none; }
+.social-links a:hover { opacity: .75; }
+.social-links a.soc-tw { background: #1a2535; color: #6aa6ff; }
+.social-links a.soc-tg { background: #1a2f3a; color: #54c5f8; }
+.social-links a.soc-web { background: #252525; color: #aaa; }
 </style>
 {% endblock %}
 
@@ -201,24 +224,47 @@ tr.hidden { display: none; }
     </div>
 
     <div class="fgroup">
-      <label>Calls min</label>
-      <input type="text" id="fCallsMin" style="width:70px" placeholder="e.g. 3" oninput="applyFilters()">
-    </div>
-
-    <div class="fgroup">
-      <label>Market cap</label>
-      <div class="mc-presets" id="mcPresets">
-        <button class="mc-btn active" data-min="" data-max="" onclick="setMc(this)">Any</button>
-        <button class="mc-btn" data-min="" data-max="100000" onclick="setMc(this)">&lt;100K</button>
-        <button class="mc-btn" data-min="100000" data-max="1000000" onclick="setMc(this)">100K–1M</button>
-        <button class="mc-btn" data-min="1000000" data-max="10000000" onclick="setMc(this)">1M–10M</button>
-        <button class="mc-btn" data-min="10000000" data-max="" onclick="setMc(this)">10M+</button>
+      <label>Calls</label>
+      <div class="frow-inputs">
+        <input type="text" id="fCallsMin" style="width:60px" placeholder="min" oninput="applyFilters()">
+        <span style="color:#4a5260;font-size:.8rem">–</span>
+        <input type="text" id="fCallsMax" style="width:60px" placeholder="max" oninput="applyFilters()">
       </div>
     </div>
 
     <div class="fgroup">
-      <label>First seen after</label>
-      <input type="text" id="fTimeFrom" class="time-input" placeholder="HH:MM" maxlength="5" oninput="applyFilters()">
+      <label>Market cap</label>
+      <div class="frow-inputs" style="gap:4px;flex-wrap:wrap">
+        <div class="mc-presets" id="mcPresets">
+          <button class="mc-btn active" data-min="" data-max="" onclick="setMc(this)">Any</button>
+          <button class="mc-btn" data-min="" data-max="100000" onclick="setMc(this)">&lt;100K</button>
+          <button class="mc-btn" data-min="100000" data-max="1000000" onclick="setMc(this)">100K–1M</button>
+          <button class="mc-btn" data-min="1000000" data-max="10000000" onclick="setMc(this)">1M–10M</button>
+          <button class="mc-btn" data-min="10000000" data-max="" onclick="setMc(this)">10M+</button>
+        </div>
+        <div class="frow-inputs" style="gap:4px;margin-left:6px">
+          <input type="text" id="fMcMin" style="width:72px" placeholder="min $" oninput="applyMcCustom()">
+          <span style="color:#4a5260;font-size:.8rem">–</span>
+          <input type="text" id="fMcMax" style="width:72px" placeholder="max $" oninput="applyMcCustom()">
+        </div>
+      </div>
+    </div>
+
+    <div class="fgroup">
+      <label>Time window</label>
+      <div class="frow-inputs">
+        <input type="text" id="fTimeFrom" class="time-input" placeholder="HH:MM" maxlength="5" oninput="applyFilters()">
+        <span style="color:#4a5260;font-size:.8rem">→</span>
+        <input type="text" id="fTimeTo" class="time-input" placeholder="HH:MM" maxlength="5" oninput="applyFilters()">
+      </div>
+    </div>
+
+    <div class="fgroup">
+      <label>Min duration</label>
+      <div class="frow-inputs">
+        <input type="text" id="fDurMin" style="width:60px" placeholder="min" oninput="applyFilters()">
+        <span style="color:#4a5260;font-size:.75rem">min</span>
+      </div>
     </div>
 
     <div class="fgroup" style="justify-content: flex-end">
@@ -245,7 +291,6 @@ tr.hidden { display: none; }
   </div>
   {% endif %}
 
-  {% if all_groups %}
   <div class="filter-row" style="margin-top:10px">
     <div class="fgroup" style="flex:1;min-width:0">
       <label>Group</label>
@@ -254,13 +299,13 @@ tr.hidden { display: none; }
         <span class="chip {% if loop.index > 8 %}group-extra hidden{% endif %}"
               data-value="{{ g }}" onclick="toggleChip(this,'group')">{{ g }}</span>
         {% endfor %}
+        <span class="chip" data-value="__none__" onclick="toggleChip(this,'group')">none</span>
         {% if all_groups|length > 8 %}
         <span class="chip expand-more" id="groupExpand" onclick="expandGroups()">+{{ all_groups|length - 8 }} more</span>
         {% endif %}
       </div>
     </div>
   </div>
-  {% endif %}
 </div>
 
 <!-- Table -->
@@ -280,6 +325,10 @@ tr.hidden { display: none; }
       <th data-sort="mc" class="right" onclick="sortBy('mc')">mc</th>
       <th>groups</th>
       <th data-sort="first" onclick="sortBy('first')">window</th>
+      <th data-sort="holders" class="right" onclick="sortBy('holders')">holders</th>
+      <th class="right">top10%</th>
+      <th>flags</th>
+      <th>socials</th>
     </tr>
   </thead>
   <tbody>
@@ -294,15 +343,19 @@ tr.hidden { display: none; }
         data-mc="{{ c.market_cap or 0 }}"
         data-lp="{{ c.launchpad or '__none__' }}"
         data-groups="{{ (c.groups_mentioned or '')|lower }}"
-        data-first="{{ c.first_seen_at[11:16] }}"
+        data-first="{{ c.first_seen_at }}"
         data-dur="{{ c.duration_min }}"
-        data-known="{{ '1' if c.ticker else '0' }}">
+        data-known="{{ '1' if c.ticker else '0' }}"
+        data-holders="{{ c.holder_count or 0 }}">
       <td class="num">{{ loop.index }}</td>
       <td class="{{ 'ticker' if c.ticker else 'ticker unknown' }}">{{ c.ticker or 'unknown' }}</td>
       <td class="ca">
-        <a href="https://dexscreener.com/solana/{{ c.contract_address }}" target="_blank">
-          {{ c.contract_address[:6] }}…{{ c.contract_address[-6:] }}
-        </a>
+        <span class="ca-mono">{{ c.contract_address[:6] }}…{{ c.contract_address[-6:] }}</span>
+        <span class="ca-links">
+          <a class="lnk-d" href="https://dexscreener.com/solana/{{ c.contract_address }}" target="_blank" title="DexScreener">D</a>
+          <a class="lnk-g" href="https://gmgn.ai/sol/token/{{ c.contract_address }}" target="_blank" title="GMGN">G</a>
+          <a class="lnk-p" href="https://trade.padre.gg/?ca={{ c.contract_address }}" target="_blank" title="Padre">P</a>
+        </span>
       </td>
       <td>
         {% if c.launchpad %}
@@ -330,11 +383,34 @@ tr.hidden { display: none; }
       <td class="window">
         {% if c.duration_str == 'once' %}
           <span class="w-range">{{ c.first_seen_at[11:16] }}</span>
-          <span class="w-dur">once</span>
+          <span class="w-dur">once{% if c.is_recall %}<span class="w-recall" title="First ever: {{ c.lifetime_first }}">↩ recall</span>{% endif %}</span>
         {% else %}
           <span class="w-range">{{ c.first_seen_at[11:16] }} → {{ c.last_seen_at[11:16] }}</span>
-          <span class="w-dur">{{ c.duration_str }}</span>
+          <span class="w-dur">{{ c.duration_str }}{% if c.is_recall %}<span class="w-recall" title="First ever: {{ c.lifetime_first }}">↩ recall</span>{% endif %}</span>
         {% endif %}
+        {% if c.days_active > 1 %}
+          <span class="w-lifetime" title="Lifetime: {{ c.lifetime_first }} → {{ c.lifetime_last }}">{{ c.lifetime_calls }}× · {{ c.days_active }}d active</span>
+        {% endif %}
+      </td>
+      <td class="holders">
+        {% if c.holder_count %}{{ "{:,}".format(c.holder_count) }}{% else %}<span class="muted">—</span>{% endif %}
+      </td>
+      <td class="right" style="font-size:.8rem;color:#8a93a0">{{ c.top10_pct or '—' }}</td>
+      <td class="flags">
+        {% if c.renounced %}<span class="flag ok" title="Renounced">RNK</span>{% endif %}
+        {% if c.mint_revoked %}<span class="flag ok" title="Mint revoked">MNT</span>{% endif %}
+        {% if c.freeze_revoked %}<span class="flag ok" title="Freeze revoked">FRZ</span>{% endif %}
+        {% if c.lp_burned_pct and c.lp_burned_pct != '—' %}<span class="flag ok" title="LP burned {{ c.lp_burned_pct }}">LP</span>{% endif %}
+        {% if not c.renounced and not c.mint_revoked and not c.lp_burned_pct %}<span class="muted" style="font-size:.7rem">—</span>{% endif %}
+      </td>
+      <td>
+        {% if c.twitter or c.telegram or c.website %}
+        <span class="social-links">
+          {% if c.twitter %}<a class="soc-tw" href="https://x.com/{{ c.twitter }}" target="_blank" title="@{{ c.twitter }}">X</a>{% endif %}
+          {% if c.telegram %}<a class="soc-tg" href="{{ c.telegram if c.telegram.startswith('http') else 'https://t.me/' + c.telegram }}" target="_blank" title="Telegram">TG</a>{% endif %}
+          {% if c.website %}<a class="soc-web" href="{{ c.website }}" target="_blank" title="{{ c.website }}">W</a>{% endif %}
+        </span>
+        {% else %}<span class="muted" style="font-size:.7rem">—</span>{% endif %}
       </td>
     </tr>
     {% endfor %}
@@ -366,6 +442,27 @@ function setMc(btn) {
   btn.classList.add('active');
   mcMin = btn.dataset.min ? parseFloat(btn.dataset.min) : null;
   mcMax = btn.dataset.max ? parseFloat(btn.dataset.max) : null;
+  // clear custom MC inputs when preset selected
+  const fmcMin = document.getElementById('fMcMin');
+  const fmcMax = document.getElementById('fMcMax');
+  if (fmcMin) fmcMin.value = '';
+  if (fmcMax) fmcMax.value = '';
+  applyFilters();
+}
+
+// ── MC custom inputs ──
+function applyMcCustom() {
+  const minVal = parseFloat(document.getElementById('fMcMin').value);
+  const maxVal = parseFloat(document.getElementById('fMcMax').value);
+  if (!isNaN(minVal) || !isNaN(maxVal)) {
+    mcMin = !isNaN(minVal) ? minVal : null;
+    mcMax = !isNaN(maxVal) ? maxVal : null;
+    // deactivate presets when custom values entered
+    document.querySelectorAll('.mc-btn').forEach(b => b.classList.remove('active'));
+  } else {
+    mcMin = null; mcMax = null;
+    document.querySelector('.mc-btn[data-min=""][data-max=""]').classList.add('active');
+  }
   applyFilters();
 }
 
@@ -408,15 +505,21 @@ function parseTime(str) {
 
 function rowMinutes(t) {
   if (!t) return null;
-  const [h, m] = t.split(':').map(Number);
-  return h * 60 + m;
+  // accepts HH:MM or full ISO timestamp (YYYY-MM-DDTHH:MM:SS...)
+  const timePart = t.includes('T') ? t.split('T')[1] : (t.includes(' ') ? t.split(' ')[1] : t);
+  const parts = timePart.split(':').map(Number);
+  if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return null;
+  return parts[0] * 60 + parts[1];
 }
 
 // ── main filter ──
 function applyFilters() {
   const q = (document.getElementById('fSearch').value || '').trim().toUpperCase();
   const callsMin = parseFloat(document.getElementById('fCallsMin').value) || null;
+  const callsMax = parseFloat(document.getElementById('fCallsMax').value) || null;
+  const durMin = parseFloat(document.getElementById('fDurMin').value) || null;
   const tFrom = parseTime(document.getElementById('fTimeFrom').value);
+  const tTo = parseTime(document.getElementById('fTimeTo').value);
 
   const rows = document.querySelectorAll('#tbl tbody tr');
   let visible = 0;
@@ -428,20 +531,26 @@ function applyFilters() {
     const calls = parseFloat(r.dataset.calls) || 0;
     const mc = parseFloat(r.dataset.mc) || 0;
     const first = rowMinutes(r.dataset.first);
+    const dur = parseFloat(r.dataset.dur) || 0;
     const known = r.dataset.known === '1';
 
     let show = true;
     if (q && !ticker.includes(q) && !ca.includes(q)) show = false;
     if (callsMin != null && calls < callsMin) show = false;
+    if (callsMax != null && calls > callsMax) show = false;
     if (mcMin != null && mc < mcMin) show = false;
     if (mcMax != null && mc > mcMax) show = false;
     if (tFrom != null && first != null && first < tFrom) show = false;
+    if (tTo != null && first != null && first > tTo) show = false;
+    if (durMin != null && dur < durMin) show = false;
     if (hideUnknown && !known) show = false;
     if (activeFilters.lp.size > 0 && !activeFilters.lp.has(lp)) show = false;
     if (activeFilters.group.size > 0) {
+      const hasGroup = groups !== '';
       let match = false;
       for (const g of activeFilters.group) {
-        if (groups.includes(g.toLowerCase())) { match = true; break; }
+        if (g === '__none__') { if (!hasGroup) { match = true; break; } }
+        else if (groups.includes(g.toLowerCase())) { match = true; break; }
       }
       if (!match) show = false;
     }
@@ -465,12 +574,13 @@ function applyFilters() {
   const emptyEl = document.getElementById('emptyFilter');
   if (emptyEl) emptyEl.style.display = (visible === 0 && rows.length > 0) ? 'block' : 'none';
 
-  // badge
+  // badge count
   activeCount = 0;
   if (q) activeCount++;
-  if (callsMin != null) activeCount++;
+  if (callsMin != null || callsMax != null) activeCount++;
   if (mcMin != null || mcMax != null) activeCount++;
-  if (tFrom != null) activeCount++;
+  if (tFrom != null || tTo != null) activeCount++;
+  if (durMin != null) activeCount++;
   if (hideUnknown) activeCount++;
   activeCount += activeFilters.lp.size + activeFilters.group.size;
   const badge = document.getElementById('resetBadge');
@@ -480,7 +590,7 @@ function applyFilters() {
 
 // ── reset ──
 function resetFilters() {
-  ['fSearch','fCallsMin','fTimeFrom'].forEach(id => {
+  ['fSearch','fCallsMin','fCallsMax','fTimeFrom','fTimeTo','fDurMin','fMcMin','fMcMax'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });

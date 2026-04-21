@@ -150,3 +150,25 @@ def _sum_week(series: list[dict]) -> dict:
         "tokens": sum(d["tokens"] for d in series),
         "total_calls": sum(d["total_calls"] for d in series),
     }
+
+
+def get_lifetime_windows(conn: sqlite3.Connection, cas: list[str]) -> dict[str, dict]:
+    """Return lifetime first/last seen + total calls + days active for each CA (cross-day).
+
+    Returns {ca: {first_ever, last_ever, lifetime_calls, days_active}} for all CAs in list.
+    """
+    if not cas:
+        return {}
+    placeholders = ",".join("?" * len(cas))
+    rows = conn.execute(
+        f"""SELECT contract_address,
+                   MIN(first_seen_at) AS first_ever,
+                   MAX(last_seen_at)  AS last_ever,
+                   SUM(call_count)    AS lifetime_calls,
+                   COUNT(*)           AS days_active
+            FROM calls
+            WHERE contract_address IN ({placeholders})
+            GROUP BY contract_address""",
+        tuple(cas),
+    ).fetchall()
+    return {r["contract_address"]: dict(r) for r in rows}
