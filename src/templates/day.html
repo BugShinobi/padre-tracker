@@ -325,6 +325,7 @@ tr.hidden { display: none; }
       <th data-sort="mc" class="right" onclick="sortBy('mc')">mc</th>
       <th>groups</th>
       <th data-sort="first" onclick="sortBy('first')">window</th>
+      <th data-sort="last" onclick="sortBy('last')">last call</th>
       <th data-sort="holders" class="right" onclick="sortBy('holders')">holders</th>
       <th class="right">top10%</th>
       <th>flags</th>
@@ -344,6 +345,7 @@ tr.hidden { display: none; }
         data-lp="{{ c.launchpad or '__none__' }}"
         data-groups="{{ (c.groups_mentioned or '')|lower }}"
         data-first="{{ c.first_seen_at }}"
+        data-last="{{ c.last_seen_at }}"
         data-dur="{{ c.duration_min }}"
         data-known="{{ '1' if c.ticker else '0' }}"
         data-holders="{{ c.holder_count or 0 }}">
@@ -392,6 +394,7 @@ tr.hidden { display: none; }
           <span class="w-lifetime" title="Lifetime: {{ c.lifetime_first }} → {{ c.lifetime_last }}">{{ c.lifetime_calls }}× · {{ c.days_active }}d active</span>
         {% endif %}
       </td>
+      <td><span class="w-range" style="color:#e8ebef">{{ c.last_seen_at[11:16] }}</span></td>
       <td class="holders">
         {% if c.holder_count %}{{ "{:,}".format(c.holder_count) }}{% else %}<span class="muted">—</span>{% endif %}
       </td>
@@ -607,6 +610,9 @@ function sortBy(col) {
   if (th) { const a = document.createElement('span'); a.className = 'arrow'; a.textContent = sortDir === 1 ? '↑' : '↓'; th.appendChild(a); }
   rows.sort((a, b) => {
     const av = a.dataset[col] || '', bv = b.dataset[col] || '';
+    if (['ticker', 'lp', 'first', 'last'].includes(col)) {
+      return av.localeCompare(bv) * sortDir;
+    }
     const an = parseFloat(av), bn = parseFloat(bv);
     if (!isNaN(an) && !isNaN(bn)) return (an - bn) * sortDir;
     return av.localeCompare(bv) * sortDir;

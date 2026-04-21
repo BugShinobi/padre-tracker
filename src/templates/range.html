@@ -495,6 +495,9 @@ function sortBy(col) {
   if (th) { const a = document.createElement('span'); a.className = 'arrow'; a.textContent = sortDir === 1 ? '↑' : '↓'; th.appendChild(a); }
   rows.sort((a, b) => {
     const av = a.dataset[col] || '', bv = b.dataset[col] || '';
+    if (['ticker', 'lp', 'first', 'last'].includes(col)) {
+      return av.localeCompare(bv) * sortDir;
+    }
     const an = parseFloat(av), bn = parseFloat(bv);
     if (!isNaN(an) && !isNaN(bn)) return (an - bn) * sortDir;
     return av.localeCompare(bv) * sortDir;
