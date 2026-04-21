@@ -26,6 +26,7 @@ _LAUNCHPAD_SUFFIXES = [
     ("BAGS", "bags.fm"),
     ("moon", "moonshot"),
     ("bonk", "bonk.fun"),
+    ("brrr", "printr"),
 ]
 
 

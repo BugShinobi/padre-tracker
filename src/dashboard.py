@@ -195,17 +195,28 @@ def _daily_data(target: date, min_calls: int, group_filter: str, lp_filter: str)
 @app.route("/day")
 def day():
     d_str = request.args.get("d")
-    min_calls = max(1, int(request.args.get("min_calls", 1) or 1))
-    group_filter = request.args.get("group", "")
-    lp_filter = request.args.get("lp", "")
-
     try:
         target = date.fromisoformat(d_str) if d_str else date.today()
     except ValueError:
         target = date.today()
 
-    calls, stats, all_groups, all_launchpads = _daily_data(target, min_calls, group_filter, lp_filter)
-    today = date.today()
+    # Server-side: only date filter. All other filtering happens client-side for instant UX.
+    calls, stats, all_groups, all_launchpads = _daily_data(target, 1, "", "")
+
+    # Enrich all day rows with price + market cap so client-side MC filter works.
+    if calls:
+        conn = _conn()
+        try:
+            prices = get_prices(conn, [r["contract_address"] for r in calls])
+        finally:
+            conn.close()
+        for r in calls:
+            p = prices.get(r["contract_address"]) or {}
+            r["price_usd"] = p.get("price_usd")
+            r["price_fmt"] = _fmt_price(p.get("price_usd"))
+            r["price_change_h24"] = p.get("price_change_h24")
+            r["market_cap"] = p.get("market_cap") or 0
+            r["mc_fmt"] = _fmt_big(p.get("market_cap"))
 
     return render_template(
         "day.html",
@@ -214,11 +225,8 @@ def day():
         stats=stats,
         all_groups=all_groups,
         all_launchpads=all_launchpads,
-        selected_group=group_filter,
-        selected_lp=lp_filter,
-        min_calls=min_calls,
         date_str=target.isoformat(),
-        today=today.isoformat(),
+        today=date.today().isoformat(),
     )
 
 

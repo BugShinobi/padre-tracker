@@ -4,65 +4,85 @@
 {% block head %}
 <style>
 .stats {
-  display: flex; gap: 32px; padding: 22px 28px;
-  border-bottom: 1px solid #1f242b; flex-wrap: wrap;
+  display: flex; gap: 32px; padding: 18px 28px;
+  border-bottom: 1px solid #1f242b; flex-wrap: wrap; align-items: flex-end;
 }
-.stat-val { font-size: 1.7rem; color: #fff; font-weight: 600; line-height: 1.1; }
-.stat-val.sm { font-size: 1.05rem; }
+.stat-val { font-size: 1.5rem; color: #fff; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat-val.sm { font-size: 1rem; }
+.stat-val.live { color: #6aa6ff; }
 .stat-label {
-  font-size: 0.72rem; color: #6b7380; text-transform: uppercase;
+  font-size: 0.7rem; color: #6b7380; text-transform: uppercase;
   letter-spacing: 0.09em; margin-top: 6px; font-weight: 500;
 }
 
-.controls {
-  display: flex; gap: 12px; align-items: center; padding: 16px 28px;
-  border-bottom: 1px solid #1f242b; flex-wrap: wrap;
-  background: #10141a;
+.filters {
+  padding: 16px 28px; border-bottom: 1px solid #1f242b; background: #10141a;
+  position: sticky; top: 0; z-index: 10;
 }
-.controls form { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
-input[type=date], input[type=number], select {
+.filter-row {
+  display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center;
+}
+.fgroup {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.fgroup > label {
+  font-size: 0.65rem; color: #6b7380; text-transform: uppercase;
+  letter-spacing: 0.09em; font-weight: 600;
+}
+.frow-inputs { display: flex; gap: 6px; align-items: center; }
+input[type=date], input[type=number], input[type=text], select {
   background: #181d25; border: 1px solid #2d3540; color: #e8ebef;
-  padding: 7px 12px; font-family: inherit; font-size: 0.88rem; border-radius: 5px;
+  padding: 6px 10px; font-family: inherit; font-size: 0.85rem; border-radius: 5px;
 }
-input[type=date]:focus, input[type=number]:focus, select:focus {
-  outline: none; border-color: #4a6fa5;
+input:focus, select:focus { outline: none; border-color: #4a6fa5; }
+input[type=number] { width: 78px; }
+input[type=text].search { width: 140px; }
+.separator { color: #3d4553; padding: 0 2px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 5px; max-width: 280px; }
+.chip {
+  background: #181d25; border: 1px solid #2d3540; color: #8a93a0;
+  padding: 4px 9px; font-size: 0.76rem; border-radius: 11px;
+  cursor: pointer; user-select: none; line-height: 1;
+  transition: all 0.1s;
 }
-input[type=number] { width: 84px; }
-label { font-size: 0.82rem; color: #8a93a0; font-weight: 500; }
-button {
-  background: #2a3544; border: 1px solid #3d4a5c; color: #e8ebef;
-  padding: 7px 16px; font-family: inherit; font-size: 0.88rem;
-  cursor: pointer; border-radius: 5px; font-weight: 500;
+.chip:hover { border-color: #4a6fa5; color: #e8ebef; }
+.chip.active {
+  background: #2a3544; border-color: #4a6fa5; color: #fff; font-weight: 500;
 }
-button:hover { background: #34415a; border-color: #4a6fa5; }
-button.ghost { background: transparent; }
+
+button.reset {
+  background: transparent; border: 1px solid #3d4a5c; color: #8a93a0;
+  padding: 6px 14px; font-family: inherit; font-size: 0.82rem;
+  cursor: pointer; border-radius: 5px; margin-left: auto;
+}
+button.reset:hover { color: #e8ebef; border-color: #4a6fa5; }
 
 .table-wrap { padding: 0 28px 40px; overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 0.9rem; }
+table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 0.88rem; }
 thead { background: #10141a; }
 th {
   text-align: left; color: #8a93a0; border-bottom: 1px solid #232a33;
-  padding: 12px 14px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.07em; font-size: 0.72rem;
+  padding: 10px 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.07em; font-size: 0.7rem;
   white-space: nowrap; cursor: pointer; user-select: none;
 }
 th:hover { color: #e8ebef; }
 th.right { text-align: right; }
+th .arrow { color: #4a6fa5; margin-left: 3px; font-size: 0.8em; }
 td {
-  padding: 11px 14px; border-bottom: 1px solid #181d25;
+  padding: 10px 12px; border-bottom: 1px solid #181d25;
   vertical-align: middle; white-space: nowrap;
 }
 tr:hover td { background: #141922; }
+tr.hidden { display: none; }
 
-.num { color: #5a6370; font-variant-numeric: tabular-nums; width: 40px; }
-.ticker {
-  color: #fff; font-weight: 600; font-size: 0.95rem;
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-}
+.num { color: #5a6370; font-variant-numeric: tabular-nums; width: 36px; }
+.ticker { color: #fff; font-weight: 600; font-family: 'SF Mono', Menlo, Consolas, monospace; }
 .ticker.unknown { color: #4a5260; font-weight: 400; font-style: italic; font-size: 0.82rem; }
 
 .ca a {
-  color: #6aa6ff; text-decoration: none; font-size: 0.82rem;
+  color: #6aa6ff; text-decoration: none; font-size: 0.78rem;
   font-family: 'SF Mono', Menlo, Consolas, monospace;
 }
 .ca a:hover { text-decoration: underline; }
@@ -71,24 +91,18 @@ tr:hover td { background: #141922; }
 .calls.hot  { color: #ffb347; }
 .calls.warm { color: #e8ebef; }
 .calls.cold { color: #5a6370; }
-.vel, .dur {
-  color: #8a93a0; font-size: 0.82rem; text-align: right;
-  font-variant-numeric: tabular-nums;
-}
+.vel { color: #8a93a0; font-size: 0.8rem; text-align: right; font-variant-numeric: tabular-nums; }
+.price, .mc { text-align: right; font-variant-numeric: tabular-nums; }
+.mc { color: #8a93a0; font-size: 0.82rem; }
 
-.group { font-size: 0.84rem; }
+.group { font-size: 0.82rem; max-width: 200px; overflow: hidden;
+  text-overflow: ellipsis; }
 .group.tagged { color: #8ed8a5; font-weight: 500; }
 .group.none { color: #3d4553; font-style: italic; }
 
-.time {
-  color: #6b7380; font-size: 0.82rem;
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-}
+.time { color: #6b7380; font-size: 0.8rem; font-family: 'SF Mono', Menlo, Consolas, monospace; }
 
-.empty {
-  color: #5a6370; padding: 80px 0; text-align: center;
-  font-size: 1rem;
-}
+.empty { color: #5a6370; padding: 60px 0; text-align: center; font-size: 0.95rem; }
 .row-hot td { border-left: 3px solid #ffb347; }
 .row-hot td:first-child { padding-left: 11px; }
 </style>
@@ -106,12 +120,8 @@ tr:hover td { background: #141922; }
     <div class="stat-label">total calls</div>
   </div>
   <div>
-    <div class="stat-val">{{ stats.with_ticker }}</div>
-    <div class="stat-label">with ticker</div>
-  </div>
-  <div>
-    <div class="stat-val">{{ stats.with_group }}</div>
-    <div class="stat-label">with group</div>
+    <div class="stat-val live" id="visibleCount">{{ stats.tokens }}</div>
+    <div class="stat-label">visible</div>
   </div>
   {% if stats.top_launchpad %}
   <div>
@@ -131,29 +141,74 @@ tr:hover td { background: #141922; }
   </div>
 </div>
 
-<div class="controls">
-  <form method="get">
-    <label>Date</label>
-    <input type="date" name="d" value="{{ date_str }}" max="{{ today }}">
-    <label>Min calls</label>
-    <input type="number" name="min_calls" value="{{ min_calls }}" min="1" max="999">
-    <label>Launchpad</label>
-    <select name="lp">
-      <option value="">all</option>
-      {% for l in all_launchpads %}
-      <option value="{{ l }}" {% if l == selected_lp %}selected{% endif %}>{{ l }}</option>
-      {% endfor %}
-    </select>
-    <label>Group</label>
-    <select name="group">
-      <option value="">all groups</option>
-      {% for g in all_groups %}
-      <option value="{{ g }}" {% if g == selected_group %}selected{% endif %}>{{ g }}</option>
-      {% endfor %}
-    </select>
-    <button type="submit">Filter</button>
-    <button type="button" class="ghost" onclick="window.location='/day'">Today</button>
-  </form>
+<div class="filters">
+  <div class="filter-row">
+    <div class="fgroup">
+      <label>Date</label>
+      <input type="date" id="fDate" value="{{ date_str }}" max="{{ today }}" onchange="reloadDate()">
+    </div>
+
+    <div class="fgroup">
+      <label>Search ticker / CA</label>
+      <input type="text" id="fSearch" class="search" placeholder="e.g. XBT or 7xK…" oninput="applyFilters()">
+    </div>
+
+    <div class="fgroup">
+      <label>Calls</label>
+      <div class="frow-inputs">
+        <input type="number" id="fCallsMin" placeholder="min" min="1" oninput="applyFilters()">
+        <span class="separator">—</span>
+        <input type="number" id="fCallsMax" placeholder="max" min="1" oninput="applyFilters()">
+      </div>
+    </div>
+
+    <div class="fgroup">
+      <label>Market cap (USD)</label>
+      <div class="frow-inputs">
+        <input type="number" id="fMcMin" placeholder="min" min="0" oninput="applyFilters()">
+        <span class="separator">—</span>
+        <input type="number" id="fMcMax" placeholder="max" min="0" oninput="applyFilters()">
+      </div>
+    </div>
+
+    <div class="fgroup">
+      <label>Time window</label>
+      <div class="frow-inputs">
+        <input type="text" id="fTimeFrom" placeholder="00:00" maxlength="5" oninput="applyFilters()" style="width:70px">
+        <span class="separator">—</span>
+        <input type="text" id="fTimeTo" placeholder="23:59" maxlength="5" oninput="applyFilters()" style="width:70px">
+      </div>
+    </div>
+
+    <button class="reset" onclick="resetFilters()">Reset</button>
+  </div>
+
+  {% if all_launchpads %}
+  <div class="filter-row" style="margin-top: 12px">
+    <div class="fgroup" style="flex: 1">
+      <label>Launchpad</label>
+      <div class="chips" id="fLpChips">
+        {% for l in all_launchpads %}
+        <span class="chip" data-value="{{ l }}" onclick="toggleChip(this, 'lp')">{{ l }}</span>
+        {% endfor %}
+        <span class="chip" data-value="__none__" onclick="toggleChip(this, 'lp')">none</span>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if all_groups %}
+  <div class="filter-row" style="margin-top: 12px">
+    <div class="fgroup" style="flex: 1; min-width: 0">
+      <label>Group</label>
+      <div class="chips" id="fGroupChips" style="max-width: none">
+        {% for g in all_groups %}
+        <span class="chip" data-value="{{ g }}" onclick="toggleChip(this, 'group')">{{ g }}</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
 </div>
 
 <div class="table-wrap">
@@ -161,26 +216,34 @@ tr:hover td { background: #141922; }
 <table id="tbl">
   <thead>
     <tr>
-      <th>#</th>
-      <th onclick="sortBy('ticker')">ticker ↕</th>
+      <th data-sort="idx">#</th>
+      <th data-sort="ticker" onclick="sortBy('ticker')">ticker</th>
       <th>contract</th>
-      <th onclick="sortBy('lp')">launchpad ↕</th>
-      <th class="right" onclick="sortBy('calls')">calls ↕</th>
-      <th class="right" onclick="sortBy('vel')">calls/hr ↕</th>
-      <th class="right" onclick="sortBy('dur')">active for ↕</th>
+      <th data-sort="lp" onclick="sortBy('lp')">launchpad</th>
+      <th data-sort="calls" class="right" onclick="sortBy('calls')">calls</th>
+      <th data-sort="vel" class="right" onclick="sortBy('vel')">cph</th>
+      <th data-sort="price" class="right" onclick="sortBy('price')">price</th>
+      <th data-sort="chg" class="right" onclick="sortBy('chg')">24h</th>
+      <th data-sort="mc" class="right" onclick="sortBy('mc')">mc</th>
       <th>groups</th>
-      <th>first</th>
-      <th>last</th>
+      <th data-sort="first" onclick="sortBy('first')">first</th>
+      <th data-sort="last" onclick="sortBy('last')">last</th>
     </tr>
   </thead>
   <tbody>
     {% for c in calls %}
     <tr class="{{ 'row-hot' if c.call_count >= 20 else '' }}"
-        data-ticker="{{ c.ticker or '' }}"
+        data-ticker="{{ (c.ticker or '')|upper }}"
+        data-ca="{{ c.contract_address }}"
         data-calls="{{ c.call_count }}"
         data-vel="{{ c.velocity }}"
-        data-dur="{{ c.duration_min }}"
-        data-lp="{{ c.launchpad or '' }}">
+        data-price="{{ c.price_usd or 0 }}"
+        data-chg="{{ c.price_change_h24 or 0 }}"
+        data-mc="{{ c.market_cap or 0 }}"
+        data-lp="{{ c.launchpad or '__none__' }}"
+        data-groups="{{ (c.groups_mentioned or '')|lower }}"
+        data-first="{{ c.first_seen_at[11:16] }}"
+        data-last="{{ c.last_seen_at[11:16] }}">
       <td class="num">{{ loop.index }}</td>
       <td class="{{ 'ticker' if c.ticker else 'ticker unknown' }}">{{ c.ticker or 'unknown' }}</td>
       <td class="ca">
@@ -199,7 +262,15 @@ tr:hover td { background: #141922; }
         {{ c.call_count }}
       </td>
       <td class="vel">{{ c.velocity }}</td>
-      <td class="dur">{{ c.duration_str }}</td>
+      <td class="price">
+        {% if c.price_usd %}${{ c.price_fmt }}{% else %}<span class="muted">—</span>{% endif %}
+      </td>
+      <td class="price {% if c.price_change_h24 and c.price_change_h24 > 0 %}pos{% elif c.price_change_h24 and c.price_change_h24 < 0 %}neg{% endif %}">
+        {% if c.price_change_h24 is not none and c.price_change_h24 != 0 %}{{ '%+.1f'|format(c.price_change_h24) }}%{% else %}<span class="muted">—</span>{% endif %}
+      </td>
+      <td class="mc">
+        {% if c.market_cap %}${{ c.mc_fmt }}{% else %}<span class="muted">—</span>{% endif %}
+      </td>
       <td class="{{ 'group tagged' if c.groups_mentioned else 'group none' }}">
         {{ c.groups_mentioned or '—' }}
       </td>
@@ -210,16 +281,120 @@ tr:hover td { background: #141922; }
   </tbody>
 </table>
 {% else %}
-<p class="empty">No calls match the current filters.</p>
+<p class="empty">No calls for this date.</p>
 {% endif %}
 </div>
 
 <script>
+const activeFilters = { lp: new Set(), group: new Set() };
 let sortCol = null, sortDir = 1;
+
+function reloadDate() {
+  const d = document.getElementById('fDate').value;
+  if (d) window.location = '/day?d=' + encodeURIComponent(d);
+}
+
+function toggleChip(el, kind) {
+  const v = el.dataset.value;
+  if (activeFilters[kind].has(v)) {
+    activeFilters[kind].delete(v);
+    el.classList.remove('active');
+  } else {
+    activeFilters[kind].add(v);
+    el.classList.add('active');
+  }
+  applyFilters();
+}
+
+function parseTime(str) {
+  // "HH:MM" → minutes since midnight; returns null if invalid
+  if (!str) return null;
+  const m = str.match(/^(\d{1,2}):?(\d{2})?$/);
+  if (!m) return null;
+  const h = parseInt(m[1]);
+  const mm = parseInt(m[2] || '0');
+  if (isNaN(h) || isNaN(mm) || h > 23 || mm > 59) return null;
+  return h * 60 + mm;
+}
+
+function rowMinutes(t) {
+  // t is "HH:MM"
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function applyFilters() {
+  const q = (document.getElementById('fSearch').value || '').trim().toUpperCase();
+  const callsMin = parseFloat(document.getElementById('fCallsMin').value) || null;
+  const callsMax = parseFloat(document.getElementById('fCallsMax').value) || null;
+  const mcMin = parseFloat(document.getElementById('fMcMin').value) || null;
+  const mcMax = parseFloat(document.getElementById('fMcMax').value) || null;
+  const tFrom = parseTime(document.getElementById('fTimeFrom').value);
+  const tTo = parseTime(document.getElementById('fTimeTo').value);
+
+  const rows = document.querySelectorAll('#tbl tbody tr');
+  let visible = 0;
+  rows.forEach(r => {
+    const ticker = r.dataset.ticker || '';
+    const ca = (r.dataset.ca || '').toUpperCase();
+    const lp = r.dataset.lp;
+    const groups = r.dataset.groups || '';
+    const calls = parseFloat(r.dataset.calls) || 0;
+    const mc = parseFloat(r.dataset.mc) || 0;
+    const first = rowMinutes(r.dataset.first);
+    const last = rowMinutes(r.dataset.last);
+
+    let show = true;
+    if (q && !ticker.includes(q) && !ca.includes(q)) show = false;
+    if (callsMin != null && calls < callsMin) show = false;
+    if (callsMax != null && calls > callsMax) show = false;
+    if (mcMin != null && mc < mcMin) show = false;
+    if (mcMax != null && mc > mcMax) show = false;
+    if (tFrom != null && last != null && last < tFrom) show = false;
+    if (tTo != null && first != null && first > tTo) show = false;
+    if (activeFilters.lp.size > 0 && !activeFilters.lp.has(lp)) show = false;
+    if (activeFilters.group.size > 0) {
+      let match = false;
+      for (const g of activeFilters.group) {
+        if (groups.includes(g.toLowerCase())) { match = true; break; }
+      }
+      if (!match) show = false;
+    }
+
+    r.classList.toggle('hidden', !show);
+    if (show) visible++;
+  });
+
+  // Renumber visible rows
+  let i = 1;
+  rows.forEach(r => {
+    if (!r.classList.contains('hidden')) {
+      const n = r.querySelector('td.num');
+      if (n) n.textContent = i++;
+    }
+  });
+  document.getElementById('visibleCount').textContent = visible;
+}
+
+function resetFilters() {
+  ['fSearch','fCallsMin','fCallsMax','fMcMin','fMcMax','fTimeFrom','fTimeTo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  activeFilters.lp.clear();
+  activeFilters.group.clear();
+  document.querySelectorAll('.chip.active').forEach(c => c.classList.remove('active'));
+  applyFilters();
+}
+
 function sortBy(col) {
   const tbody = document.querySelector('#tbl tbody');
   const rows = Array.from(tbody.querySelectorAll('tr'));
   if (sortCol === col) sortDir *= -1; else { sortCol = col; sortDir = -1; }
+  document.querySelectorAll('#tbl th .arrow').forEach(a => a.remove());
+  const th = document.querySelector(`#tbl th[data-sort="${col}"]`);
+  if (th) { const a = document.createElement('span'); a.className = 'arrow'; a.textContent = sortDir === 1 ? '↑' : '↓'; th.appendChild(a); }
   rows.sort((a, b) => {
     const av = a.dataset[col] || '', bv = b.dataset[col] || '';
     const an = parseFloat(av), bn = parseFloat(bv);
@@ -227,8 +402,9 @@ function sortBy(col) {
     return av.localeCompare(bv) * sortDir;
   });
   rows.forEach(r => tbody.appendChild(r));
-  tbody.querySelectorAll('tr').forEach((r, i) => r.querySelector('td').textContent = i + 1);
+  applyFilters();
 }
-setTimeout(() => location.reload(), 60000);
+
+setTimeout(() => location.reload(), 120000);
 </script>
 {% endblock %}
