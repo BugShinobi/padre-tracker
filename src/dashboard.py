@@ -17,9 +17,12 @@ from pathlib import Path
 from flask import Flask, render_template, request, jsonify
 
 import aggregations as agg
+import gmgn_worker
 from aggregations import get_lifetime_windows
+from cache import ttl_cache
+from db import init_db
 from enrich import get_prices
-from gmgn import get_gmgn, init_cache as gmgn_init_cache
+from gmgn import get_gmgn_cached
 
 DB_PATH = os.getenv("DB_PATH", "./data/calls.db")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -28,6 +31,11 @@ logging.basicConfig(level=getattr(logging, LOG_LEVEL), format="%(asctime)s [%(le
 
 app = Flask(__name__)
 log = logging.getLogger("padre-dashboard")
+
+if Path(DB_PATH).exists():
+    _boot = init_db(DB_PATH)
+    _boot.close()
+    gmgn_worker.start(DB_PATH)
 
 
 def _conn() -> sqlite3.Connection:
@@ -85,6 +93,15 @@ def _delta(curr: int, prev: int) -> dict:
     return {"str": f"{sign}{diff} ({sign}{pct:.0f}%)", "class": cls}
 
 
+@ttl_cache(30)
+def _cached_overview(today: date) -> dict:
+    conn = _conn()
+    try:
+        return agg.overview(conn, today)
+    finally:
+        conn.close()
+
+
 @app.route("/")
 def home():
     if not Path(DB_PATH).exists():
@@ -100,10 +117,9 @@ def home():
             hourly_max=0, top_tokens=[], groups=[],
         )
 
+    data = _cached_overview(date.today())
     conn = _conn()
     try:
-        data = agg.overview(conn, date.today())
-
         t_delta = _delta(data["today"]["tokens"], data["yesterday"]["tokens"])
         c_delta = _delta(data["today"]["total_calls"], data["yesterday"]["total_calls"])
 
@@ -112,7 +128,8 @@ def home():
         if top:
             top_cas = [t["contract_address"] for t in top]
             prices = get_prices(conn, top_cas)
-            gmgn_data = get_gmgn(conn, top_cas)
+            gmgn_data, stale = get_gmgn_cached(conn, top_cas)
+            gmgn_worker.enqueue_refresh(stale)
             for t in top:
                 p = prices.get(t["contract_address"]) or {}
                 t["price_usd"] = _safe_float(p.get("price_usd"))
@@ -152,6 +169,7 @@ def home():
 
 
 # ------------------------------------------------------------------ /day
+@ttl_cache(30)
 def _daily_data(target: date):
     if not Path(DB_PATH).exists():
         return [], {}, [], []
@@ -245,19 +263,12 @@ def day():
             cas = [r["contract_address"] for r in calls]
             prices = get_prices(conn, cas)
             lifetime = get_lifetime_windows(conn, cas)
-            # GMGN: fetch live for top-30 by call_count; rest read from cache
-            top30_cas = [r["contract_address"] for r in sorted(calls, key=lambda x: x["call_count"], reverse=True)[:30]]
-            gmgn_data = get_gmgn(conn, top30_cas)
-            # Cache-only for remaining CAs
-            rest_cas = [ca for ca in cas if ca not in gmgn_data]
-            if rest_cas:
-                gmgn_init_cache(conn)
-                ph = ",".join("?" * len(rest_cas))
-                rest_rows = conn.execute(
-                    f"SELECT * FROM token_gmgn WHERE contract_address IN ({ph})",
-                    tuple(rest_cas),
-                ).fetchall()
-                gmgn_data.update({r["contract_address"]: dict(r) for r in rest_rows})
+            gmgn_data, stale = get_gmgn_cached(conn, cas)
+            # Prioritize refresh for top-30 by call_count (most visible rows first)
+            top30_cas = {r["contract_address"] for r in sorted(calls, key=lambda x: x["call_count"], reverse=True)[:30]}
+            priority_stale = [ca for ca in stale if ca in top30_cas]
+            rest_stale = [ca for ca in stale if ca not in top30_cas]
+            gmgn_worker.enqueue_refresh(priority_stale + rest_stale)
         finally:
             conn.close()
         for r in calls:
@@ -299,28 +310,8 @@ def day():
     )
 
 
-@app.route("/range")
-def range_view():
-    today = date.today()
-    d_from_str = request.args.get("from")
-    d_to_str = request.args.get("to")
-    try:
-        d_from = date.fromisoformat(d_from_str) if d_from_str else today - timedelta(days=6)
-    except ValueError:
-        d_from = today - timedelta(days=6)
-    try:
-        d_to = date.fromisoformat(d_to_str) if d_to_str else today
-    except ValueError:
-        d_to = today
-    if d_from > d_to:
-        d_from, d_to = d_to, d_from
-
-    if not Path(DB_PATH).exists():
-        return render_template("range.html", active_nav="range", calls=[], stats={},
-                               all_groups=[], all_launchpads=[],
-                               date_from=d_from.isoformat(), date_to=d_to.isoformat(),
-                               today=today.isoformat())
-
+@ttl_cache(60)
+def _range_aggregations(d_from: date, d_to: date) -> tuple[list[dict], list[dict]]:
     conn = _conn()
     try:
         rows = conn.execute(
@@ -350,15 +341,48 @@ def range_view():
             d["call_count"] = d.pop("total_calls")
             all_rows.append(d)
 
+        day_series = conn.execute(
+            """SELECT call_date, COUNT(*) AS tokens, COALESCE(SUM(call_count),0) AS total_calls
+               FROM calls WHERE call_date >= ? AND call_date <= ?
+               GROUP BY call_date ORDER BY call_date""",
+            (d_from.isoformat(), d_to.isoformat()),
+        ).fetchall()
+        day_series = [dict(r) for r in day_series]
+        return all_rows, day_series
+    finally:
+        conn.close()
+
+
+@app.route("/range")
+def range_view():
+    today = date.today()
+    d_from_str = request.args.get("from")
+    d_to_str = request.args.get("to")
+    try:
+        d_from = date.fromisoformat(d_from_str) if d_from_str else today - timedelta(days=6)
+    except ValueError:
+        d_from = today - timedelta(days=6)
+    try:
+        d_to = date.fromisoformat(d_to_str) if d_to_str else today
+    except ValueError:
+        d_to = today
+    if d_from > d_to:
+        d_from, d_to = d_to, d_from
+
+    if not Path(DB_PATH).exists():
+        return render_template("range.html", active_nav="range", calls=[], stats={},
+                               all_groups=[], all_launchpads=[],
+                               date_from=d_from.isoformat(), date_to=d_to.isoformat(),
+                               today=today.isoformat())
+
+    all_rows, day_series = _range_aggregations(d_from, d_to)
+
+    conn = _conn()
+    try:
         cas = [r["contract_address"] for r in all_rows]
         prices = get_prices(conn, cas) if cas else {}
-        gmgn_init_cache(conn)
-        placeholders = ",".join("?" * len(cas)) if cas else "NULL"
-        gmgn_rows = conn.execute(
-            f"SELECT * FROM token_gmgn WHERE contract_address IN ({placeholders})",
-            tuple(cas),
-        ).fetchall() if cas else []
-        gmgn_data = {row["contract_address"]: dict(row) for row in gmgn_rows}
+        gmgn_data, stale = get_gmgn_cached(conn, cas)
+        gmgn_worker.enqueue_refresh(stale)
     finally:
         conn.close()
 
@@ -401,20 +425,6 @@ def range_view():
         "top_launchpad": max(lp_counts, key=lp_counts.get) if lp_counts else None,
     }
 
-    # Per-day series for the chart
-    conn2 = _conn()
-    try:
-        day_series = conn2.execute(
-            """SELECT call_date, COUNT(*) AS tokens, COALESCE(SUM(call_count),0) AS total_calls
-               FROM calls WHERE call_date >= ? AND call_date <= ?
-               GROUP BY call_date ORDER BY call_date""",
-            (d_from.isoformat(), d_to.isoformat()),
-        ).fetchall()
-        day_series = [dict(r) for r in day_series]
-    finally:
-        conn2.close()
-
-    # Top groups for chart
     top_groups_chart = sorted(group_counts.items(), key=lambda x: x[1], reverse=True)[:10]
 
     return render_template(
@@ -489,6 +499,317 @@ def api_stats():
     return jsonify({"tokens_today": row["t"], "calls_today": row["c"]})
 
 
+# ============================================================= JSON API
+#
+# Shape follows the TanStack Table/Query contract: {data, rowCount, pageCount}
+# so a SvelteKit/React frontend can drive the UI without re-rendering Jinja.
+# Filtering, sorting and pagination run server-side over columns we actually
+# index in SQLite. Price/MC sorting happens after the SQL page is fetched and
+# enriched — not billions of rows, so acceptable. Enqueueing stale GMGN rows
+# to the background worker means the payload is served instantly with whatever
+# is in cache; subsequent polls pick up fresh data.
+
+_DAY_SORT_FIELDS = {
+    "call_count": "call_count",
+    "first_seen_at": "first_seen_at",
+    "last_seen_at": "last_seen_at",
+    "ticker": "ticker",
+    "launchpad": "launchpad",
+}
+
+
+def _parse_sort(raw: str, allowed: dict, default_field: str, default_dir: str) -> tuple[str, str]:
+    if raw and ":" in raw:
+        field, direction = raw.split(":", 1)
+        if field in allowed and direction in ("asc", "desc"):
+            return allowed[field], direction.upper()
+    return allowed[default_field], default_dir.upper()
+
+
+def _csv_param(raw: str) -> list[str]:
+    if not raw:
+        return []
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+
+def _enrich_rows(conn: sqlite3.Connection, rows: list[dict]) -> None:
+    if not rows:
+        return
+    cas = [r["contract_address"] for r in rows]
+    prices = get_prices(conn, cas)
+    gmgn_data, stale = get_gmgn_cached(conn, cas)
+    gmgn_worker.enqueue_refresh(stale)
+    for r in rows:
+        p = prices.get(r["contract_address"]) or {}
+        r["price_usd"] = _safe_float(p.get("price_usd"))
+        r["price_change_h24"] = _safe_float(p.get("price_change_h24"))
+        r["market_cap"] = _safe_float(p.get("market_cap"))
+        r["liquidity_usd"] = _safe_float(p.get("liquidity_usd"))
+        r["volume_h24"] = _safe_float(p.get("volume_h24"))
+        g = gmgn_data.get(r["contract_address"]) or {}
+        r["holder_count"] = g.get("holder_count")
+        r["top10_pct"] = _safe_float(g.get("top10_pct"))
+        r["renounced"] = g.get("renounced")
+        r["renounced_mint"] = g.get("renounced_mint")
+        r["renounced_freeze"] = g.get("renounced_freeze")
+        r["burn_ratio"] = _safe_float(g.get("burn_ratio"))
+        r["burn_status"] = g.get("burn_status")
+        r["swaps_5m"] = g.get("swaps_5m")
+        r["swaps_1h"] = g.get("swaps_1h")
+        r["swaps_24h"] = g.get("swaps_24h")
+
+
+@app.route("/api/overview")
+def api_overview():
+    if not Path(DB_PATH).exists():
+        return jsonify({"today": {"tokens": 0, "total_calls": 0}, "ready": False})
+
+    data = _cached_overview(date.today())
+    t_delta = _delta(data["today"]["tokens"], data["yesterday"]["tokens"])
+    c_delta = _delta(data["today"]["total_calls"], data["yesterday"]["total_calls"])
+
+    conn = _conn()
+    try:
+        top = [dict(t) for t in data["top_tokens_week"]]
+        _enrich_rows(conn, top)
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ready": True,
+        "date": date.today().isoformat(),
+        "today": data["today"],
+        "yesterday": data["yesterday"],
+        "delta": {
+            "tokens": {"str": t_delta["str"], "class": t_delta["class"]},
+            "calls":  {"str": c_delta["str"], "class": c_delta["class"]},
+        },
+        "week": data["week"],
+        "week_totals": data["week_totals"],
+        "hourly_today": data["hourly_today"],
+        "top_tokens": top,
+        "groups": data["groups_week"],
+    })
+
+
+@app.route("/api/day")
+def api_day():
+    """Paginated/filterable/sortable daily calls. TanStack contract.
+
+    Query params:
+      d=YYYY-MM-DD           (default: today)
+      page=1                 (1-based)
+      page_size=50           (max 500)
+      search=<str>           (substring on ticker or contract_address)
+      launchpad=a,b,c        (match any)
+      groups=g1,g2           (match any — uses LIKE on the comma-joined field)
+      sort=call_count:desc   (field: call_count|first_seen_at|last_seen_at|ticker|launchpad)
+    """
+    if not Path(DB_PATH).exists():
+        return jsonify({"data": [], "rowCount": 0, "pageCount": 0, "ready": False})
+
+    try:
+        target = date.fromisoformat(request.args["d"]) if request.args.get("d") else date.today()
+    except ValueError:
+        target = date.today()
+
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    try:
+        page_size = max(1, min(500, int(request.args.get("page_size", 50))))
+    except ValueError:
+        page_size = 50
+
+    search = (request.args.get("search") or "").strip()
+    launchpads = _csv_param(request.args.get("launchpad"))
+    groups = _csv_param(request.args.get("groups"))
+    sort_field, sort_dir = _parse_sort(
+        request.args.get("sort"), _DAY_SORT_FIELDS, "call_count", "desc"
+    )
+
+    where = ["call_date = ?"]
+    params: list = [target.isoformat()]
+
+    if search:
+        where.append("(ticker LIKE ? OR contract_address LIKE ?)")
+        like = f"%{search}%"
+        params += [like, like]
+
+    if launchpads:
+        where.append("launchpad IN (" + ",".join("?" * len(launchpads)) + ")")
+        params += launchpads
+
+    if groups:
+        where.append("(" + " OR ".join(["groups_mentioned LIKE ?"] * len(groups)) + ")")
+        params += [f"%{g}%" for g in groups]
+
+    where_sql = " AND ".join(where)
+    conn = _conn()
+    try:
+        total = conn.execute(f"SELECT COUNT(*) FROM calls WHERE {where_sql}", params).fetchone()[0]
+
+        offset = (page - 1) * page_size
+        rows = conn.execute(
+            f"""SELECT contract_address, ticker, chain, launchpad, call_count,
+                       first_seen_at, last_seen_at, groups_mentioned
+                FROM calls WHERE {where_sql}
+                ORDER BY {sort_field} {sort_dir}, first_seen_at DESC
+                LIMIT ? OFFSET ?""",
+            params + [page_size, offset],
+        ).fetchall()
+        rows = [dict(r) for r in rows]
+
+        _enrich_rows(conn, rows)
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ready": True,
+        "data": rows,
+        "rowCount": total,
+        "pageCount": (total + page_size - 1) // page_size,
+        "page": page,
+        "pageSize": page_size,
+        "date": target.isoformat(),
+        "filters": {
+            "search": search,
+            "launchpad": launchpads,
+            "groups": groups,
+            "sort": f"{sort_field}:{sort_dir.lower()}",
+        },
+    })
+
+
+@app.route("/api/range")
+def api_range():
+    """Paginated aggregate across a date range. TanStack contract.
+
+    Query params:
+      from=YYYY-MM-DD, to=YYYY-MM-DD (default: last 7 days)
+      page, page_size, search, launchpad, groups, sort
+    """
+    if not Path(DB_PATH).exists():
+        return jsonify({"data": [], "rowCount": 0, "pageCount": 0, "ready": False})
+
+    today = date.today()
+    try:
+        d_from = date.fromisoformat(request.args["from"]) if request.args.get("from") else today - timedelta(days=6)
+    except ValueError:
+        d_from = today - timedelta(days=6)
+    try:
+        d_to = date.fromisoformat(request.args["to"]) if request.args.get("to") else today
+    except ValueError:
+        d_to = today
+    if d_from > d_to:
+        d_from, d_to = d_to, d_from
+
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    try:
+        page_size = max(1, min(500, int(request.args.get("page_size", 50))))
+    except ValueError:
+        page_size = 50
+
+    search = (request.args.get("search") or "").strip()
+    launchpads = _csv_param(request.args.get("launchpad"))
+    groups = _csv_param(request.args.get("groups"))
+    range_sort = {
+        "call_count": "total_calls",
+        "days_active": "days_active",
+        "first_seen_at": "first_seen_at",
+        "last_seen_at": "last_seen_at",
+        "ticker": "ticker",
+        "launchpad": "launchpad",
+    }
+    sort_field, sort_dir = _parse_sort(
+        request.args.get("sort"), range_sort, "call_count", "desc"
+    )
+
+    having = []
+    params: list = [d_from.isoformat(), d_to.isoformat()]
+    row_where = ["call_date >= ?", "call_date <= ?"]
+
+    if search:
+        row_where.append("(ticker LIKE ? OR contract_address LIKE ?)")
+        like = f"%{search}%"
+        params += [like, like]
+
+    if launchpads:
+        row_where.append("launchpad IN (" + ",".join("?" * len(launchpads)) + ")")
+        params += launchpads
+
+    if groups:
+        row_where.append("(" + " OR ".join(["groups_mentioned LIKE ?"] * len(groups)) + ")")
+        params += [f"%{g}%" for g in groups]
+
+    where_sql = " AND ".join(row_where)
+    having_sql = (" HAVING " + " AND ".join(having)) if having else ""
+
+    conn = _conn()
+    try:
+        total = conn.execute(
+            f"""SELECT COUNT(*) FROM (
+                 SELECT contract_address FROM calls WHERE {where_sql}
+                 GROUP BY contract_address{having_sql}
+               )""",
+            params,
+        ).fetchone()[0]
+
+        offset = (page - 1) * page_size
+        rows = conn.execute(
+            f"""SELECT contract_address,
+                       MAX(ticker)        AS ticker,
+                       MAX(launchpad)     AS launchpad,
+                       SUM(call_count)    AS total_calls,
+                       COUNT(*)           AS days_active,
+                       MIN(first_seen_at) AS first_seen_at,
+                       MAX(last_seen_at)  AS last_seen_at,
+                       GROUP_CONCAT(DISTINCT groups_mentioned) AS groups_raw
+                FROM calls WHERE {where_sql}
+                GROUP BY contract_address{having_sql}
+                ORDER BY {sort_field} {sort_dir}
+                LIMIT ? OFFSET ?""",
+            params + [page_size, offset],
+        ).fetchall()
+
+        result = []
+        for r in rows:
+            d = dict(r)
+            groups_set: set[str] = set()
+            for chunk in (d.pop("groups_raw") or "").split(","):
+                g = chunk.strip()
+                if g:
+                    groups_set.add(g)
+            d["groups_mentioned"] = ", ".join(sorted(groups_set)) if groups_set else None
+            d["call_count"] = d.pop("total_calls")
+            result.append(d)
+
+        _enrich_rows(conn, result)
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ready": True,
+        "data": result,
+        "rowCount": total,
+        "pageCount": (total + page_size - 1) // page_size,
+        "page": page,
+        "pageSize": page_size,
+        "from": d_from.isoformat(),
+        "to": d_to.isoformat(),
+        "filters": {
+            "search": search,
+            "launchpad": launchpads,
+            "groups": groups,
+            "sort": f"{sort_field}:{sort_dir.lower()}",
+        },
+    })
+
+
 if __name__ == "__main__":
     port = int(os.getenv("DASHBOARD_PORT", "8080"))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, threaded=True)

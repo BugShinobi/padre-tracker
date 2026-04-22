@@ -176,6 +176,52 @@ def _write_cache(conn: sqlite3.Connection, row: dict | None, ca: str, now: int) 
     )
 
 
+def get_gmgn_cached(conn: sqlite3.Connection, cas: list[str]) -> tuple[dict[str, dict], list[str]]:
+    """Read-only cache lookup. Returns (cached_rows, stale_cas).
+
+    Never performs HTTP — safe to call from request path. The caller should
+    enqueue stale_cas to the background worker (gmgn_worker.enqueue_refresh)
+    so the cache gets refreshed out-of-band.
+    """
+    if not cas:
+        return {}, []
+
+    init_cache(conn)
+    cas = list(dict.fromkeys(cas))
+    now = int(time.time())
+    fresh_cutoff = now - FRESH_TTL
+    dead_cutoff = now - DEAD_TTL
+
+    placeholders = ",".join("?" * len(cas))
+    rows = conn.execute(
+        f"SELECT * FROM token_gmgn WHERE contract_address IN ({placeholders})",
+        tuple(cas),
+    ).fetchall()
+    cached = {r["contract_address"]: dict(r) for r in rows}
+
+    stale = [
+        ca for ca in cas
+        if (ca not in cached)
+        or (cached[ca]["has_data"] == 1 and cached[ca]["fetched_at"] < fresh_cutoff)
+        or (cached[ca]["has_data"] == 0 and cached[ca]["fetched_at"] < dead_cutoff)
+    ]
+    return cached, stale
+
+
+def fetch_and_cache_one(db_path: str, ca: str) -> None:
+    """Fetch one CA from GMGN and write to the shared SQLite cache. Used by worker."""
+    conn = sqlite3.connect(db_path, timeout=30)
+    conn.row_factory = sqlite3.Row
+    try:
+        init_cache(conn)
+        now = int(time.time())
+        result = _fetch_one(ca)
+        _write_cache(conn, result, ca, now)
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def get_gmgn(conn: sqlite3.Connection, cas: list[str]) -> dict[str, dict]:
     """Return {ca: gmgn_row} for each CA. Fetches stale/missing with rate limiting."""
     if not cas:

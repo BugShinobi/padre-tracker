@@ -6,11 +6,19 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=cokle
-WorkingDirectory=/home/cokle/padre-tracker
-ExecStart=/home/cokle/padre-tracker/.venv/bin/python src/dashboard.py
+WorkingDirectory=/home/cokle/padre-tracker/src
+ExecStart=/home/cokle/padre-tracker/.venv/bin/gunicorn \
+    --workers 4 \
+    --worker-class gthread \
+    --threads 8 \
+    --timeout 60 \
+    --bind 0.0.0.0:8080 \
+    --access-logfile - \
+    dashboard:app
 Restart=always
 RestartSec=10
 Environment=DASHBOARD_PORT=8080
+Environment=DB_PATH=/home/cokle/padre-tracker/data/calls.db
 
 StandardOutput=journal
 StandardError=journal

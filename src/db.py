@@ -28,6 +28,9 @@ def init_db(db_path: str) -> sqlite3.Connection:
         CREATE UNIQUE INDEX IF NOT EXISTS idx_ca_date
         ON calls (contract_address, call_date)
     """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_calls_date ON calls(call_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_calls_first_seen ON calls(first_seen_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_calls_ca ON calls(contract_address)")
     _migrate_add_launchpad(conn)
     _cleanup_bad_tickers(conn)
     conn.commit()
