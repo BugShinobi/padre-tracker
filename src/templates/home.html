@@ -196,10 +196,11 @@ tr:hover td { background: #141922; }
           <th>#</th>
           <th>ticker</th>
           <th>lp</th>
+          <th class="right">age</th>
           <th class="right">calls</th>
           <th class="right">price</th>
           <th class="right">24h</th>
-          <th class="right">mcap</th>
+          <th class="right">mcap / ath</th>
           <th class="right">holders</th>
           <th>flags</th>
         </tr>
@@ -209,18 +210,24 @@ tr:hover td { background: #141922; }
         <tr>
           <td class="muted">{{ loop.index }}</td>
           <td>
-            {% if t.ticker %}
-              <span class="ticker">{{ t.ticker }}</span>
-            {% else %}
-              <span class="ticker unknown">—</span>
-            {% endif %}
-            <div class="ca">
-              <span>{{ t.contract_address[:4] }}…{{ t.contract_address[-4:] }}</span>
-              <span class="ca-links">
-                <a class="lnk-d" href="https://dexscreener.com/solana/{{ t.contract_address }}" target="_blank" title="DexScreener">D</a>
-                <a class="lnk-g" href="https://gmgn.ai/sol/token/{{ t.contract_address }}" target="_blank" title="GMGN">G</a>
-                <a class="lnk-p" href="https://trade.padre.gg/trade/solana/{{ t.contract_address }}" target="_blank" title="Padre">P</a>
-              </span>
+            <div style="display:flex;align-items:flex-start;gap:.45rem">
+              {% if t.image_url %}<img src="{{ t.image_url }}" alt="" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;background:#1a1f29" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">{% endif %}
+              <div>
+                {% if t.ticker %}
+                  <span class="ticker"{% if t.description %} title="{{ t.description|e }}"{% endif %}>{{ t.ticker }}</span>
+                {% else %}
+                  <span class="ticker unknown">—</span>
+                {% endif %}
+                {% if t.description %}<div class="muted" style="font-size:.72rem;line-height:1.2;margin:2px 0;max-width:28ch;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="{{ t.description|e }}">{{ t.description }}</div>{% endif %}
+                <div class="ca">
+                  <span>{{ t.contract_address[:4] }}…{{ t.contract_address[-4:] }}</span>
+                  <span class="ca-links">
+                    <a class="lnk-d" href="https://dexscreener.com/solana/{{ t.contract_address }}" target="_blank" title="DexScreener">D</a>
+                    <a class="lnk-g" href="https://gmgn.ai/sol/token/{{ t.contract_address }}" target="_blank" title="GMGN">G</a>
+                    <a class="lnk-p" href="https://trade.padre.gg/trade/solana/{{ t.contract_address }}" target="_blank" title="Padre">P</a>
+                  </span>
+                </div>
+              </div>
             </div>
           </td>
           <td>
@@ -228,6 +235,7 @@ tr:hover td { background: #141922; }
               <span class="lp {{ t.launchpad.split('.')[0] }}">{{ t.launchpad }}</span>
             {% else %}<span class="lp none">—</span>{% endif %}
           </td>
+          <td class="right muted" style="font-variant-numeric:tabular-nums;font-size:.78rem">{{ t.age_str or "—" }}</td>
           <td class="right">{{ t.total_calls }}</td>
           <td class="right price">
             {% if t.price_usd is not none %}${{ t.price_fmt }}{% else %}<span class="muted">—</span>{% endif %}
@@ -235,8 +243,11 @@ tr:hover td { background: #141922; }
           <td class="right {% if t.price_change_h24 and t.price_change_h24 > 0 %}pos{% elif t.price_change_h24 and t.price_change_h24 < 0 %}neg{% endif %}">
             {% if t.price_change_h24 is not none %}{{ '%+.1f'|format(t.price_change_h24) }}%{% else %}<span class="muted">—</span>{% endif %}
           </td>
-          <td class="right mc">
+          <td class="right mc" style="line-height:1.2">
             {% if t.market_cap %}${{ t.mc_fmt }}{% else %}<span class="muted">—</span>{% endif %}
+            {% if t.market_cap_ath and (not t.market_cap or t.market_cap_ath > t.market_cap) %}
+              <div class="muted" style="font-size:.68rem" title="all-time high observed since tracking">ATH ${{ t.mc_ath_fmt }}</div>
+            {% endif %}
           </td>
           <td class="right" style="font-size:.8rem;color:#8a93a0;font-variant-numeric:tabular-nums">
             {% if t.holder_count %}{{ "{:,}".format(t.holder_count) }}{% else %}<span class="muted">—</span>{% endif %}

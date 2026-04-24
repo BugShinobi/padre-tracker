@@ -11,6 +11,7 @@ the homepage's top-10 slice (small batch, short cache), keeping the server footp
 import logging
 import os
 import sqlite3
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -18,13 +19,16 @@ from flask import Flask, render_template, request, jsonify
 
 import aggregations as agg
 import gmgn_worker
+import metadata_worker
 from aggregations import get_lifetime_windows
 from cache import ttl_cache
 from db import init_db
 from enrich import get_prices
 from gmgn import get_gmgn_cached
+from metadata import get_metadata_cached
 
 DB_PATH = os.getenv("DB_PATH", "./data/calls.db")
+HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 logging.basicConfig(level=getattr(logging, LOG_LEVEL), format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -36,6 +40,7 @@ if Path(DB_PATH).exists():
     _boot = init_db(DB_PATH)
     _boot.close()
     gmgn_worker.start(DB_PATH)
+    metadata_worker.start(DB_PATH, HELIUS_API_KEY)
 
 
 def _conn() -> sqlite3.Connection:
@@ -81,6 +86,28 @@ def _fmt_pct(v) -> str:
     return f"{v * 100:.1f}%" if v <= 1.0 else f"{v:.1f}%"
 
 
+def _fmt_age(creation_ts) -> str:
+    """Short token age from creation_timestamp (unix seconds). '3h 42m', '2d 4h', '—'."""
+    if not creation_ts:
+        return "—"
+    try:
+        secs = int(time.time()) - int(creation_ts)
+    except (TypeError, ValueError):
+        return "—"
+    if secs < 60:
+        return f"{secs}s"
+    mins = secs // 60
+    if mins < 60:
+        return f"{mins}m"
+    hours = mins // 60
+    if hours < 24:
+        rem_m = mins % 60
+        return f"{hours}h {rem_m}m" if rem_m else f"{hours}h"
+    days = hours // 24
+    rem_h = hours % 24
+    return f"{days}d {rem_h}h" if rem_h else f"{days}d"
+
+
 def _delta(curr: int, prev: int) -> dict:
     if prev == 0 and curr == 0:
         return {"str": "±0", "class": "flat"}
@@ -123,13 +150,15 @@ def home():
         t_delta = _delta(data["today"]["tokens"], data["yesterday"]["tokens"])
         c_delta = _delta(data["today"]["total_calls"], data["yesterday"]["total_calls"])
 
-        # Enrich top 10 with DexScreener + GMGN (batched/cached)
+        # Enrich top 10 with DexScreener + GMGN + Helius metadata (batched/cached)
         top = data["top_tokens_week"]
         if top:
             top_cas = [t["contract_address"] for t in top]
             prices = get_prices(conn, top_cas)
             gmgn_data, stale = get_gmgn_cached(conn, top_cas)
             gmgn_worker.enqueue_refresh(stale)
+            meta_data, meta_stale = get_metadata_cached(conn, top_cas)
+            metadata_worker.enqueue_refresh(meta_stale)
             for t in top:
                 p = prices.get(t["contract_address"]) or {}
                 t["price_usd"] = _safe_float(p.get("price_usd"))
@@ -137,6 +166,8 @@ def home():
                 t["price_change_h24"] = _safe_float(p.get("price_change_h24"))
                 t["market_cap"] = _safe_float(p.get("market_cap"))
                 t["mc_fmt"] = _fmt_big(t["market_cap"])
+                t["market_cap_ath"] = _safe_float(p.get("market_cap_ath"))
+                t["mc_ath_fmt"] = _fmt_big(t["market_cap_ath"])
                 g = gmgn_data.get(t["contract_address"]) or {}
                 t["holder_count"] = g.get("holder_count")
                 t["top10_pct"] = _fmt_pct(g.get("top10_pct"))
@@ -145,6 +176,11 @@ def home():
                 t["freeze_revoked"] = g.get("renounced_freeze")
                 t["lp_burned_pct"] = _safe_float(g.get("burn_ratio"))
                 t["burn_status"] = g.get("burn_status")
+                t["age_str"] = _fmt_age(g.get("creation_timestamp"))
+                m = meta_data.get(t["contract_address"]) or {}
+                t["name"] = m.get("name")
+                t["description"] = m.get("description")
+                t["image_url"] = m.get("image_url")
 
         hourly_max = max((h["new_tokens"] for h in data["hourly_today"]), default=0)
 
@@ -269,6 +305,10 @@ def day():
             priority_stale = [ca for ca in stale if ca in top30_cas]
             rest_stale = [ca for ca in stale if ca not in top30_cas]
             gmgn_worker.enqueue_refresh(priority_stale + rest_stale)
+            meta_data, meta_stale = get_metadata_cached(conn, cas)
+            meta_priority = [ca for ca in meta_stale if ca in top30_cas]
+            meta_rest = [ca for ca in meta_stale if ca not in top30_cas]
+            metadata_worker.enqueue_refresh(meta_priority + meta_rest)
         finally:
             conn.close()
         for r in calls:
@@ -278,6 +318,8 @@ def day():
             r["price_change_h24"] = _safe_float(p.get("price_change_h24"))
             r["market_cap"] = _safe_float(p.get("market_cap")) or 0
             r["mc_fmt"] = _fmt_big(r["market_cap"])
+            r["market_cap_ath"] = _safe_float(p.get("market_cap_ath"))
+            r["mc_ath_fmt"] = _fmt_big(r["market_cap_ath"])
             lw = lifetime.get(r["contract_address"]) or {}
             r["lifetime_first"] = (lw.get("first_ever") or "")[:10]
             r["lifetime_last"] = (lw.get("last_ever") or "")[:10]
@@ -294,6 +336,11 @@ def day():
             r["burn_status"] = g.get("burn_status")
             r["swaps_5m"] = g.get("swaps_5m")
             r["swaps_1h"] = g.get("swaps_1h")
+            r["age_str"] = _fmt_age(g.get("creation_timestamp"))
+            m = meta_data.get(r["contract_address"]) or {}
+            r["name"] = m.get("name")
+            r["description"] = m.get("description")
+            r["image_url"] = m.get("image_url")
 
     return render_template(
         "day.html",
@@ -383,6 +430,8 @@ def range_view():
         prices = get_prices(conn, cas) if cas else {}
         gmgn_data, stale = get_gmgn_cached(conn, cas)
         gmgn_worker.enqueue_refresh(stale)
+        meta_data, meta_stale = get_metadata_cached(conn, cas)
+        metadata_worker.enqueue_refresh(meta_stale)
     finally:
         conn.close()
 
@@ -397,6 +446,8 @@ def range_view():
         r["price_change_h24"] = _safe_float(p.get("price_change_h24"))
         r["market_cap"] = _safe_float(p.get("market_cap")) or 0
         r["mc_fmt"] = _fmt_big(r["market_cap"])
+        r["market_cap_ath"] = _safe_float(p.get("market_cap_ath"))
+        r["mc_ath_fmt"] = _fmt_big(r["market_cap_ath"])
         g = gmgn_data.get(r["contract_address"]) or {}
         r["holder_count"] = g.get("holder_count")
         r["top10_pct"] = _fmt_pct(g.get("top10_pct"))
@@ -405,6 +456,11 @@ def range_view():
         r["freeze_revoked"] = g.get("renounced_freeze")
         r["burn_status"] = g.get("burn_status")
         r["lp_burned_pct"] = _fmt_pct(g.get("burn_ratio"))
+        r["age_str"] = _fmt_age(g.get("creation_timestamp"))
+        m = meta_data.get(r["contract_address"]) or {}
+        r["name"] = m.get("name")
+        r["description"] = m.get("description")
+        r["image_url"] = m.get("image_url")
 
         if r["launchpad"]:
             lp_counts[r["launchpad"]] = lp_counts.get(r["launchpad"], 0) + 1
@@ -539,6 +595,8 @@ def _enrich_rows(conn: sqlite3.Connection, rows: list[dict]) -> None:
     prices = get_prices(conn, cas)
     gmgn_data, stale = get_gmgn_cached(conn, cas)
     gmgn_worker.enqueue_refresh(stale)
+    meta_data, meta_stale = get_metadata_cached(conn, cas)
+    metadata_worker.enqueue_refresh(meta_stale)
     for r in rows:
         p = prices.get(r["contract_address"]) or {}
         r["price_usd"] = _safe_float(p.get("price_usd"))
@@ -546,6 +604,10 @@ def _enrich_rows(conn: sqlite3.Connection, rows: list[dict]) -> None:
         r["market_cap"] = _safe_float(p.get("market_cap"))
         r["liquidity_usd"] = _safe_float(p.get("liquidity_usd"))
         r["volume_h24"] = _safe_float(p.get("volume_h24"))
+        r["price_ath"] = _safe_float(p.get("price_ath"))
+        r["price_ath_at"] = p.get("price_ath_at")
+        r["market_cap_ath"] = _safe_float(p.get("market_cap_ath"))
+        r["market_cap_ath_at"] = p.get("market_cap_ath_at")
         g = gmgn_data.get(r["contract_address"]) or {}
         r["holder_count"] = g.get("holder_count")
         r["top10_pct"] = _safe_float(g.get("top10_pct"))
@@ -557,6 +619,11 @@ def _enrich_rows(conn: sqlite3.Connection, rows: list[dict]) -> None:
         r["swaps_5m"] = g.get("swaps_5m")
         r["swaps_1h"] = g.get("swaps_1h")
         r["swaps_24h"] = g.get("swaps_24h")
+        r["creation_timestamp"] = g.get("creation_timestamp")
+        m = meta_data.get(r["contract_address"]) or {}
+        r["name"] = m.get("name")
+        r["description"] = m.get("description")
+        r["image_url"] = m.get("image_url")
 
 
 @app.route("/api/overview")

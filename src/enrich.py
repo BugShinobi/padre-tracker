@@ -38,6 +38,16 @@ def init_cache(conn: sqlite3.Connection) -> None:
             has_data         INTEGER NOT NULL DEFAULT 1
         )
     """)
+    # ATH tracking columns — added 2026-04-25. Rolling max updated on every fetch.
+    existing = {r[1] for r in conn.execute("PRAGMA table_info(token_prices)").fetchall()}
+    for col, ddl in (
+        ("price_ath",        "REAL"),
+        ("price_ath_at",     "INTEGER"),
+        ("market_cap_ath",   "REAL"),
+        ("market_cap_ath_at","INTEGER"),
+    ):
+        if col not in existing:
+            conn.execute(f"ALTER TABLE token_prices ADD COLUMN {col} {ddl}")
     conn.commit()
 
 
@@ -79,30 +89,76 @@ def _fetch_batch(cas: list[str]) -> dict[str, dict]:
 
 def _write_cache(conn: sqlite3.Connection, ca: str, pair: dict | None, now: int) -> None:
     if pair is None:
+        # Preserve any previously-recorded ATH — INSERT OR REPLACE would wipe it.
         conn.execute(
-            """INSERT OR REPLACE INTO token_prices
-               (contract_address, fetched_at, has_data)
-               VALUES (?, ?, 0)""",
+            """INSERT INTO token_prices (contract_address, fetched_at, has_data)
+               VALUES (?, ?, 0)
+               ON CONFLICT(contract_address) DO UPDATE SET
+                   fetched_at = excluded.fetched_at,
+                   has_data   = 0""",
             (ca, now),
         )
         return
+
     price = pair.get("priceUsd")
+    price_f = float(price) if price else None
+    mc = pair.get("marketCap") or pair.get("fdv")
+    mc_f = float(mc) if mc else None
+
+    # UPSERT so ATH rolls forward (GREATEST(old, new)) instead of being overwritten.
     conn.execute(
-        """INSERT OR REPLACE INTO token_prices
+        """INSERT INTO token_prices
            (contract_address, price_usd, market_cap, volume_h24,
             price_change_h24, liquidity_usd, pair_address, dex_id,
-            fetched_at, has_data)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+            fetched_at, has_data,
+            price_ath, price_ath_at, market_cap_ath, market_cap_ath_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+           ON CONFLICT(contract_address) DO UPDATE SET
+             price_usd        = excluded.price_usd,
+             market_cap       = excluded.market_cap,
+             volume_h24       = excluded.volume_h24,
+             price_change_h24 = excluded.price_change_h24,
+             liquidity_usd    = excluded.liquidity_usd,
+             pair_address     = excluded.pair_address,
+             dex_id           = excluded.dex_id,
+             fetched_at       = excluded.fetched_at,
+             has_data         = 1,
+             price_ath = CASE
+                 WHEN excluded.price_usd IS NOT NULL
+                  AND (token_prices.price_ath IS NULL
+                       OR excluded.price_usd > token_prices.price_ath)
+                 THEN excluded.price_usd
+                 ELSE token_prices.price_ath END,
+             price_ath_at = CASE
+                 WHEN excluded.price_usd IS NOT NULL
+                  AND (token_prices.price_ath IS NULL
+                       OR excluded.price_usd > token_prices.price_ath)
+                 THEN excluded.fetched_at
+                 ELSE token_prices.price_ath_at END,
+             market_cap_ath = CASE
+                 WHEN excluded.market_cap IS NOT NULL
+                  AND (token_prices.market_cap_ath IS NULL
+                       OR excluded.market_cap > token_prices.market_cap_ath)
+                 THEN excluded.market_cap
+                 ELSE token_prices.market_cap_ath END,
+             market_cap_ath_at = CASE
+                 WHEN excluded.market_cap IS NOT NULL
+                  AND (token_prices.market_cap_ath IS NULL
+                       OR excluded.market_cap > token_prices.market_cap_ath)
+                 THEN excluded.fetched_at
+                 ELSE token_prices.market_cap_ath_at END""",
         (
             ca,
-            float(price) if price else None,
-            pair.get("marketCap") or pair.get("fdv"),
+            price_f,
+            mc_f,
             (pair.get("volume") or {}).get("h24"),
             (pair.get("priceChange") or {}).get("h24"),
             (pair.get("liquidity") or {}).get("usd"),
             pair.get("pairAddress"),
             pair.get("dexId"),
             now,
+            price_f, now if price_f else None,
+            mc_f, now if mc_f else None,
         ),
     )
 
