@@ -3,6 +3,7 @@
 # Server is a git repo aligned with origin/main.
 # Passwordless sudo via /etc/sudoers.d/cokle-restart (restart only).
 # Systemd unit files are NOT synced automatically — deploy warns if they drift.
+# SSH still prompts for password once (ssh key setup is a TODO for full CI).
 
 set -e
 
@@ -12,7 +13,7 @@ echo "==> Pushing local commits..."
 git push origin main
 
 echo "==> Pulling on server + restart..."
-ssh "$SERVER" bash -s <<'REMOTE_SCRIPT'
+ssh -t "$SERVER" bash -s <<'REMOTE_SCRIPT'
 set -e
 cd /home/cokle/padre-tracker
 
