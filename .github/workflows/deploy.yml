@@ -32,15 +32,28 @@ jobs:
             echo "=== Pulling latest code ==="
             git fetch origin main
             git reset --hard origin/main
+            git log --oneline -1
 
-            echo "=== Installing dependencies ==="
+            echo "=== Installing Python deps ==="
             .venv/bin/pip install -r requirements.txt -q
 
+            echo "=== Checking systemd unit drift ==="
+            drift=0
+            for svc in padre-dashboard padre-tracker; do
+              if ! diff -q "$svc.service" "/etc/systemd/system/$svc.service" >/dev/null 2>&1; then
+                drift=1
+                echo "!!! $svc.service drifted — manual sync required on server"
+              fi
+            done
+
             echo "=== Restarting services ==="
-            pm2 restart padre-tracker padre-dashboard --update-env
+            sudo systemctl restart padre-tracker
+            sudo systemctl restart padre-dashboard
 
             echo "=== Health check ==="
-            sleep 5
-            pm2 status
+            sleep 3
+            systemctl is-active padre-tracker padre-dashboard
+
+            [ "$drift" = "1" ] && echo "WARNING: systemd unit drift detected" || true
 
             echo "=== Deployment complete ==="
