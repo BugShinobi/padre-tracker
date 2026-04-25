@@ -1,28 +1,35 @@
 #!/bin/bash
-# Deploy: push locally, then pull + restart on server.
+# Manual deploy: build frontend locally, rsync build/ to server, then pull + restart.
+# Mirrors the GitHub Actions flow so the server never needs Node installed.
 # Server is a git repo aligned with origin/main.
 # Passwordless sudo via /etc/sudoers.d/cokle-restart (restart only).
-# Systemd unit files are NOT synced automatically — deploy warns if they drift.
-# SSH still prompts for password once (ssh key setup is a TODO for full CI).
 
 set -e
 
 SERVER="cokle@100.111.164.86"
+REMOTE_PATH="padre-tracker"
 
 echo "==> Pushing local commits..."
 git push origin main
 
-echo "==> Pulling on server + restart..."
+echo "==> Building frontend locally..."
+( cd frontend && npm ci --silent && npm run build )
+
+echo "==> Pulling on server + installing Python deps..."
 ssh "$SERVER" bash -s <<'REMOTE_SCRIPT'
 set -e
-cd /home/cokle/padre-tracker
-
+cd ~/padre-tracker
 git pull origin main --ff-only
 .venv/bin/pip install -r requirements.txt -q
+REMOTE_SCRIPT
 
-# Build the SvelteKit frontend — Flask serves frontend/build/ as a SPA.
-echo "==> Building frontend..."
-( cd frontend && npm ci --silent && npm run build )
+echo "==> Syncing frontend/build/ to server..."
+rsync -az --delete frontend/build/ "$SERVER:$REMOTE_PATH/frontend/build/"
+
+echo "==> Restarting services..."
+ssh "$SERVER" bash -s <<'REMOTE_SCRIPT'
+set -e
+cd ~/padre-tracker
 
 drift=0
 for svc in padre-dashboard padre-tracker; do
@@ -30,10 +37,8 @@ for svc in padre-dashboard padre-tracker; do
     drift=1
     echo
     echo "!!! SYSTEMD UNIT OUT OF SYNC: $svc.service"
-    echo "!!! Run manually on server:"
-    echo "!!!   sudo install -m 0644 -o root -g root /home/cokle/padre-tracker/$svc.service /etc/systemd/system/"
-    echo "!!!   sudo systemctl daemon-reload"
-    echo "!!!   sudo systemctl restart $svc"
+    echo "!!!   sudo install -m 0644 -o root -g root $svc.service /etc/systemd/system/"
+    echo "!!!   sudo systemctl daemon-reload && sudo systemctl restart $svc"
     echo
   fi
 done

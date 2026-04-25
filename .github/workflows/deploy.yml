@@ -12,12 +12,35 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
       - name: Connect to Tailscale
         uses: tailscale/github-action@v2
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Deploy to server
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Pull code + Python deps
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -26,24 +49,28 @@ jobs:
           command_timeout: 5m
           script: |
             set -e
-
             cd ~/padre-tracker
-
-            echo "=== Pulling latest code ==="
             git fetch origin main
             git reset --hard origin/main
             git log --oneline -1
-
-            echo "=== Installing Python deps ==="
             .venv/bin/pip install -r requirements.txt -q
 
-            echo "=== Building frontend ==="
-            cd frontend
-            npm ci --silent
-            npm run build
-            cd ..
+      - name: Rsync frontend build
+        run: |
+          rsync -az --delete frontend/build/ \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:padre-tracker/frontend/build/
 
-            echo "=== Checking systemd unit drift ==="
+      - name: Restart services + health check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          command_timeout: 2m
+          script: |
+            set -e
+            cd ~/padre-tracker
+
             drift=0
             for svc in padre-dashboard padre-tracker; do
               if ! diff -q "$svc.service" "/etc/systemd/system/$svc.service" >/dev/null 2>&1; then
@@ -52,14 +79,10 @@ jobs:
               fi
             done
 
-            echo "=== Restarting services ==="
             sudo systemctl restart padre-tracker
             sudo systemctl restart padre-dashboard
 
-            echo "=== Health check ==="
             sleep 3
             systemctl is-active padre-tracker padre-dashboard
 
             [ "$drift" = "1" ] && echo "WARNING: systemd unit drift detected" || true
-
-            echo "=== Deployment complete ==="
