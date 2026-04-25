@@ -20,6 +20,10 @@ cd /home/cokle/padre-tracker
 git pull origin main --ff-only
 .venv/bin/pip install -r requirements.txt -q
 
+# Build the SvelteKit frontend — Flask serves frontend/build/ as a SPA.
+echo "==> Building frontend..."
+( cd frontend && npm ci --silent && npm run build )
+
 drift=0
 for svc in padre-dashboard padre-tracker; do
   if ! diff -q "$svc.service" "/etc/systemd/system/$svc.service" >/dev/null 2>&1; then
