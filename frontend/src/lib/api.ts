@@ -1,4 +1,4 @@
-import type { OverviewResponse, DayResponse } from './types';
+import type { OverviewResponse, DayResponse, RangeResponse } from './types';
 
 class ApiError extends Error {
 	constructor(
@@ -15,8 +15,7 @@ async function getJson<T>(url: string): Promise<T> {
 	return res.json();
 }
 
-export type DayParams = {
-	d?: string;
+type ListBaseParams = {
 	page?: number;
 	pageSize?: number;
 	search?: string;
@@ -25,19 +24,43 @@ export type DayParams = {
 	groups?: string[];
 };
 
+export type DayParams = ListBaseParams & { d?: string };
+export type RangeParams = ListBaseParams & { from?: string; to?: string };
+
+function buildList(q: URLSearchParams, p: ListBaseParams) {
+	if (p.page) q.set('page', String(p.page));
+	if (p.pageSize) q.set('page_size', String(p.pageSize));
+	if (p.search) q.set('search', p.search);
+	if (p.sort) q.set('sort', p.sort);
+	if (p.launchpad?.length) q.set('launchpad', p.launchpad.join(','));
+	if (p.groups?.length) q.set('groups', p.groups.join(','));
+}
+
 export const api = {
 	overview: () => getJson<OverviewResponse>('/api/overview'),
 	day: (params: DayParams = {}) => {
 		const q = new URLSearchParams();
 		if (params.d) q.set('d', params.d);
-		if (params.page) q.set('page', String(params.page));
-		if (params.pageSize) q.set('page_size', String(params.pageSize));
-		if (params.search) q.set('search', params.search);
-		if (params.sort) q.set('sort', params.sort);
-		if (params.launchpad?.length) q.set('launchpad', params.launchpad.join(','));
-		if (params.groups?.length) q.set('groups', params.groups.join(','));
+		buildList(q, params);
 		return getJson<DayResponse>(`/api/day?${q}`);
+	},
+	range: (params: RangeParams = {}) => {
+		const q = new URLSearchParams();
+		if (params.from) q.set('from', params.from);
+		if (params.to) q.set('to', params.to);
+		buildList(q, params);
+		return getJson<RangeResponse>(`/api/range?${q}`);
 	}
 };
 
-export { fmtMc, fmtPct, fmtPrice, fmtNum, shortCa, fmtAge, fmtTime, todayIso } from './format';
+export {
+	fmtMc,
+	fmtPct,
+	fmtPrice,
+	fmtNum,
+	shortCa,
+	fmtAge,
+	fmtTime,
+	todayIso,
+	daysAgoIso
+} from './format';

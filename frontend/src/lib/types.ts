@@ -79,3 +79,29 @@ export type DayResponse = {
 
 export type SortDir = 'asc' | 'desc';
 export type DaySortField = 'call_count' | 'first_seen_at' | 'last_seen_at' | 'ticker' | 'launchpad';
+export type RangeSortField =
+	| 'call_count'
+	| 'days_active'
+	| 'first_seen_at'
+	| 'last_seen_at'
+	| 'ticker'
+	| 'launchpad';
+
+export type RangeRow = EnrichedRow & { days_active: number };
+
+export type RangeResponse = {
+	ready: boolean;
+	data: RangeRow[];
+	rowCount: number;
+	pageCount: number;
+	page: number;
+	pageSize: number;
+	from: string;
+	to: string;
+	filters: {
+		search: string;
+		launchpad: string[];
+		groups: string[];
+		sort: string;
+	};
+};

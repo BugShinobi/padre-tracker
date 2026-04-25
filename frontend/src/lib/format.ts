@@ -44,9 +44,18 @@ export function fmtTime(iso: string): string {
 }
 
 export function todayIso(): string {
-	const now = new Date();
-	const y = now.getFullYear();
-	const m = String(now.getMonth() + 1).padStart(2, '0');
-	const d = String(now.getDate()).padStart(2, '0');
+	return toIso(new Date());
+}
+
+export function daysAgoIso(days: number): string {
+	const dt = new Date();
+	dt.setDate(dt.getDate() - days);
+	return toIso(dt);
+}
+
+function toIso(dt: Date): string {
+	const y = dt.getFullYear();
+	const m = String(dt.getMonth() + 1).padStart(2, '0');
+	const d = String(dt.getDate()).padStart(2, '0');
 	return `${y}-${m}-${d}`;
 }
