@@ -24,6 +24,7 @@
 				<a href="/" class="font-semibold tracking-tight">padre-tracker</a>
 				<nav class="text-sm text-zinc-400 flex gap-4">
 					<a href="/" class="hover:text-zinc-100">Home</a>
+					<a href="/day" class="hover:text-zinc-100">Day</a>
 				</nav>
 			</div>
 		</header>

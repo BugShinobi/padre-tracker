@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
-	import { api, fmtMc, fmtPct, shortCa } from '$lib/api';
+	import { api, fmtMc, fmtPct, shortCa, fmtAge } from '$lib/api';
 
 	const overview = createQuery(() => ({
 		queryKey: ['overview'],
@@ -92,10 +92,10 @@
 							<td class="px-3 py-2 font-mono text-xs text-zinc-400">{shortCa(t.contract_address)}</td>
 							<td class="px-3 py-2 text-right tabular-nums">{t.call_count}</td>
 							<td class="px-3 py-2 text-right tabular-nums">{fmtMc(t.market_cap)}</td>
-							<td class="px-3 py-2 text-right tabular-nums {changeClass(t.change_24h)}">
-								{fmtPct(t.change_24h)}
+							<td class="px-3 py-2 text-right tabular-nums {changeClass(t.price_change_h24)}">
+								{fmtPct(t.price_change_h24)}
 							</td>
-							<td class="px-3 py-2 text-zinc-400">{t.age_str ?? '—'}</td>
+							<td class="px-3 py-2 text-zinc-400">{fmtAge(t.creation_timestamp)}</td>
 						</tr>
 					{/each}
 				</tbody>
