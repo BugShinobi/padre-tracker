@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { api, fmtMc, fmtPct, shortCa, fmtAge } from '$lib/api';
+	import AnimatedNumber from '$lib/components/AnimatedNumber.svelte';
+	import Sparkline from '$lib/components/Sparkline.svelte';
 
 	const overview = createQuery(() => ({
 		queryKey: ['overview'],
@@ -27,28 +29,58 @@
 		<h1 class="text-2xl font-semibold mb-1">Today</h1>
 		<p class="text-sm text-zinc-500 mb-6">{d.date}</p>
 
-		<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+		{@const week = d.week ?? []}
+		<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+			<div class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+				<div class="flex items-center justify-between">
+					<div class="text-xs uppercase tracking-wider text-zinc-500">Tokens · 7 giorni</div>
+					<div class="text-sm tabular-nums text-zinc-300">
+						<AnimatedNumber value={d.week_totals?.tokens ?? 0} />
+					</div>
+				</div>
+				<div class="mt-2">
+					<Sparkline
+						data={week.map((w) => w.tokens)}
+						stroke="rgb(16 185 129)"
+						fill="rgb(16 185 129 / 0.15)"
+					/>
+				</div>
+			</div>
+			<div class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+				<div class="flex items-center justify-between">
+					<div class="text-xs uppercase tracking-wider text-zinc-500">Calls · 7 giorni</div>
+					<div class="text-sm tabular-nums text-zinc-300">
+						<AnimatedNumber value={d.week_totals?.total_calls ?? 0} />
+					</div>
+				</div>
+				<div class="mt-2">
+					<Sparkline
+						data={week.map((w) => w.total_calls)}
+						stroke="rgb(96 165 250)"
+						fill="rgb(96 165 250 / 0.15)"
+					/>
+				</div>
+			</div>
+		</div>
+
+		<div class="grid grid-cols-2 gap-3 mb-8">
 			<div class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
 				<div class="text-xs uppercase tracking-wider text-zinc-500">Tokens today</div>
-				<div class="mt-1 text-2xl font-semibold">{d.today?.tokens ?? 0}</div>
+				<div class="mt-1 text-2xl font-semibold">
+					<AnimatedNumber value={d.today?.tokens ?? 0} />
+				</div>
 				<div class="text-xs mt-1 {deltaClass(d.delta?.tokens.class)}">
 					{d.delta?.tokens.str ?? ''} vs ieri
 				</div>
 			</div>
 			<div class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
 				<div class="text-xs uppercase tracking-wider text-zinc-500">Calls today</div>
-				<div class="mt-1 text-2xl font-semibold">{d.today?.total_calls ?? 0}</div>
+				<div class="mt-1 text-2xl font-semibold">
+					<AnimatedNumber value={d.today?.total_calls ?? 0} />
+				</div>
 				<div class="text-xs mt-1 {deltaClass(d.delta?.calls.class)}">
 					{d.delta?.calls.str ?? ''} vs ieri
 				</div>
-			</div>
-			<div class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-				<div class="text-xs uppercase tracking-wider text-zinc-500">Tokens 7d</div>
-				<div class="mt-1 text-2xl font-semibold">{d.week_totals?.tokens ?? 0}</div>
-			</div>
-			<div class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-				<div class="text-xs uppercase tracking-wider text-zinc-500">Calls 7d</div>
-				<div class="mt-1 text-2xl font-semibold">{d.week_totals?.total_calls ?? 0}</div>
 			</div>
 		</div>
 
