@@ -37,6 +37,12 @@ jobs:
             echo "=== Installing Python deps ==="
             .venv/bin/pip install -r requirements.txt -q
 
+            echo "=== Building frontend ==="
+            cd frontend
+            npm ci --silent
+            npm run build
+            cd ..
+
             echo "=== Checking systemd unit drift ==="
             drift=0
             for svc in padre-dashboard padre-tracker; do
