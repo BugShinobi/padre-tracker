@@ -17,11 +17,13 @@ ExecStart=/home/cokle/padre-tracker/.venv/bin/gunicorn \
     dashboard:app
 Restart=always
 RestartSec=10
+# EnvironmentFile= ALWAYS overrides Environment= regardless of order — so the
+# server's .env MUST NOT contain DB_PATH (or it would override the absolute
+# path below and resolve relative to ./src, where no DB exists). We only want
+# .env for HELIUS_API_KEY. Leading `-` = don't fail if missing.
+EnvironmentFile=-/home/cokle/padre-tracker/.env
 Environment=DASHBOARD_PORT=8080
 Environment=DB_PATH=/home/cokle/padre-tracker/data/calls.db
-# Optional: .env provides HELIUS_API_KEY (for Helius DAS metadata fetching).
-# Leading `-` = don't fail if missing — metadata worker is no-op without key.
-EnvironmentFile=-/home/cokle/padre-tracker/.env
 
 StandardOutput=journal
 StandardError=journal

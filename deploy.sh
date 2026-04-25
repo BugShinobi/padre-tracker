@@ -13,7 +13,7 @@ echo "==> Pushing local commits..."
 git push origin main
 
 echo "==> Pulling on server + restart..."
-ssh -t "$SERVER" bash -s <<'REMOTE_SCRIPT'
+ssh "$SERVER" bash -s <<'REMOTE_SCRIPT'
 set -e
 cd /home/cokle/padre-tracker
 
