@@ -2,6 +2,9 @@
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
+	import { onMount } from 'svelte';
+	import { connectSse, disconnectSse } from '$lib/sse.svelte';
+	import LiveTicker from '$lib/components/LiveTicker.svelte';
 
 	const queryClient = new QueryClient({
 		defaultOptions: {
@@ -10,6 +13,11 @@
 				refetchOnWindowFocus: false
 			}
 		}
+	});
+
+	onMount(() => {
+		connectSse(queryClient);
+		return () => disconnectSse();
 	});
 
 	let { children } = $props();
@@ -29,6 +37,7 @@
 				</nav>
 			</div>
 		</header>
+		<LiveTicker />
 		<main class="mx-auto max-w-6xl px-4 py-6">
 			{@render children()}
 		</main>

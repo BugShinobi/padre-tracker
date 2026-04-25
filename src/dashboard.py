@@ -4,13 +4,15 @@ JSON API under /api/* powers the SvelteKit frontend (served from frontend/build/
 Everything else returns the SPA's index.html so client-side routing works.
 """
 
+import json
 import logging
 import os
 import sqlite3
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, Response, request, jsonify, send_from_directory, stream_with_context
 
 import aggregations as agg
 import gmgn_worker
@@ -130,6 +132,64 @@ def api_stats():
     finally:
         conn.close()
     return jsonify({"tokens_today": row["t"], "calls_today": row["c"]})
+
+
+@app.route("/api/stream/calls")
+def api_stream_calls():
+    """SSE feed of newly-inserted calls.
+
+    The dashboard polls the DB once per second for rows with first_seen_at
+    greater than the last value already pushed to this client, then streams
+    them as `event: new`. A heartbeat (`event: ping`) every 15s keeps proxies
+    and EventSource connections alive. The watermark starts at "now" so a
+    fresh client only receives genuinely live tokens, not the day's backlog.
+    """
+    if not Path(DB_PATH).exists():
+        return Response("db not ready\n", status=503, mimetype="text/plain")
+
+    @stream_with_context
+    def gen():
+        since = datetime.now().isoformat()
+        last_ping = time.monotonic()
+        yield f"event: ready\ndata: {json.dumps({'since': since})}\n\n"
+
+        while True:
+            conn = _conn()
+            try:
+                rows = conn.execute(
+                    """SELECT contract_address, ticker, chain, launchpad, call_count,
+                              first_seen_at, last_seen_at, groups_mentioned
+                       FROM calls
+                       WHERE first_seen_at > ?
+                       ORDER BY first_seen_at ASC
+                       LIMIT 20""",
+                    (since,),
+                ).fetchall()
+                rows = [dict(r) for r in rows]
+                if rows:
+                    _enrich_rows(conn, rows)
+                    for r in rows:
+                        yield f"event: new\ndata: {json.dumps(r, default=str)}\n\n"
+                    since = rows[-1]["first_seen_at"]
+            finally:
+                conn.close()
+
+            now_mono = time.monotonic()
+            if now_mono - last_ping >= 15:
+                yield "event: ping\ndata: {}\n\n"
+                last_ping = now_mono
+
+            time.sleep(1)
+
+    return Response(
+        gen(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 # ============================================================= JSON API
