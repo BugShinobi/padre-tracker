@@ -4,6 +4,8 @@
 	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import { api, fmtMc, fmtPct, fmtNum, shortCa, fmtAge, fmtTime, todayIso } from '$lib/api';
 	import type { DaySortField, SortDir, EnrichedRow } from '$lib/types';
+	import { flip } from 'svelte/animate';
+	import { fade } from 'svelte/transition';
 
 	const initialDate = pageStore.url.searchParams.get('d') || todayIso();
 
@@ -191,7 +193,12 @@
 					<tr><td colspan="12" class="px-3 py-8 text-center text-zinc-500">No calls.</td></tr>
 				{:else}
 					{#each dayQuery.data.data as r, i (r.contract_address)}
-						<tr class="border-t border-zinc-800 hover:bg-zinc-900/30">
+						<tr
+							class="border-t border-zinc-800 hover:bg-zinc-900/30"
+							animate:flip={{ duration: 250 }}
+							in:fade={{ duration: 150 }}
+							out:fade={{ duration: 100 }}
+						>
 							<td class="px-3 py-2 text-zinc-500 tabular-nums">
 								{(dayQuery.data.page - 1) * dayQuery.data.pageSize + i + 1}
 							</td>

@@ -13,6 +13,8 @@
 		daysAgoIso
 	} from '$lib/api';
 	import type { RangeRow, RangeSortField, SortDir } from '$lib/types';
+	import { flip } from 'svelte/animate';
+	import { fade } from 'svelte/transition';
 
 	const initialFrom = pageStore.url.searchParams.get('from') || daysAgoIso(6);
 	const initialTo = pageStore.url.searchParams.get('to') || todayIso();
@@ -219,7 +221,12 @@
 					<tr><td colspan="12" class="px-3 py-8 text-center text-zinc-500">No calls in this range.</td></tr>
 				{:else}
 					{#each rangeQuery.data.data as r, i (r.contract_address)}
-						<tr class="border-t border-zinc-800 hover:bg-zinc-900/30">
+						<tr
+							class="border-t border-zinc-800 hover:bg-zinc-900/30"
+							animate:flip={{ duration: 250 }}
+							in:fade={{ duration: 150 }}
+							out:fade={{ duration: 100 }}
+						>
 							<td class="px-3 py-2 text-zinc-500 tabular-nums">
 								{(rangeQuery.data.page - 1) * rangeQuery.data.pageSize + i + 1}
 							</td>
