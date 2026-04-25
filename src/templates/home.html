@@ -256,8 +256,7 @@ tr:hover td { background: #141922; }
             {% if t.renounced %}<span style="background:#1a3a2a;color:#7ee8a0;padding:1px 4px;border-radius:3px;font-weight:700;margin-right:2px">RNK</span>{% endif %}
             {% if t.mint_revoked %}<span style="background:#1a3a2a;color:#7ee8a0;padding:1px 4px;border-radius:3px;font-weight:700;margin-right:2px">MNT</span>{% endif %}
             {% if t.lp_burned_pct %}<span style="background:#1a3a2a;color:#7ee8a0;padding:1px 4px;border-radius:3px;font-weight:700;margin-right:2px">LP</span>{% endif %}
-            {% if t.twitter %}<a href="https://x.com/{{ t.twitter }}" target="_blank" style="color:#6aa6ff;background:#1a2535;padding:1px 4px;border-radius:3px;font-size:.68rem;text-decoration:none">X</a>{% endif %}
-            {% if not t.renounced and not t.mint_revoked and not t.twitter %}<span class="muted">—</span>{% endif %}
+            {% if not t.renounced and not t.mint_revoked and not t.lp_burned_pct %}<span class="muted">—</span>{% endif %}
           </td>
         </tr>
         {% endfor %}

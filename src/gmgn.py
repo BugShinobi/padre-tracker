@@ -1,4 +1,4 @@
-"""GMGN token enrichment — security flags, holder metrics, socials, volume.
+"""GMGN token enrichment — security flags, holder metrics, volume.
 
 Two endpoints (confirmed working 2026-04-21):
 - /defi/quotation/v1/tokens/sol?address={CA}  → price, flags, burn, swaps (returns tokens[] array)

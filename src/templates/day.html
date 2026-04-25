@@ -162,12 +162,6 @@ tr.hidden { display: none; }
 .flag { display: inline-block; padding: 1px 4px; border-radius: 3px; margin-right: 2px; font-size: .68rem; font-weight: 600; }
 .flag.ok { background: #1a3a2a; color: #7ee8a0; }
 .flag.warn { background: #3a2020; color: #ff9090; }
-.social-links { display: flex; gap: 3px; }
-.social-links a { font-size: .7rem; padding: 1px 5px; border-radius: 3px; text-decoration: none; }
-.social-links a:hover { opacity: .75; }
-.social-links a.soc-tw { background: #1a2535; color: #6aa6ff; }
-.social-links a.soc-tg { background: #1a2f3a; color: #54c5f8; }
-.social-links a.soc-web { background: #252525; color: #aaa; }
 </style>
 {% endblock %}
 
@@ -329,7 +323,6 @@ tr.hidden { display: none; }
       <th data-sort="holders" class="right" onclick="sortBy('holders')">holders</th>
       <th class="right">top10%</th>
       <th>flags</th>
-      <th>socials</th>
     </tr>
   </thead>
   <tbody>
@@ -412,7 +405,6 @@ tr.hidden { display: none; }
         {% if c.burn_status == 'burn' %}<span class="flag ok" title="LP burned {{ c.lp_burned_pct }}">LP</span>{% endif %}
         {% if not c.renounced and not c.mint_revoked and c.burn_status != 'burn' %}<span class="muted" style="font-size:.7rem">—</span>{% endif %}
       </td>
-      <td><span class="muted" style="font-size:.7rem">—</span></td>
     </tr>
     {% endfor %}
   </tbody>
