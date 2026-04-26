@@ -199,11 +199,26 @@ def api_stream_calls():
 # is in cache; subsequent polls pick up fresh data.
 
 _DAY_SORT_FIELDS = {
-    "call_count": "call_count",
+    "call_count": "calls.call_count",
+    "first_seen_at": "calls.first_seen_at",
+    "last_seen_at": "calls.last_seen_at",
+    "ticker": "calls.ticker",
+    "launchpad": "calls.launchpad",
+    "market_cap": "prices.market_cap",
+    "price_change_h24": "prices.price_change_h24",
+    "holder_count": "gmgn.holder_count",
+}
+
+_RANGE_SORT_FIELDS = {
+    "call_count": "total_calls",
+    "days_active": "days_active",
     "first_seen_at": "first_seen_at",
     "last_seen_at": "last_seen_at",
     "ticker": "ticker",
     "launchpad": "launchpad",
+    "market_cap": "market_cap",
+    "price_change_h24": "price_change_h24",
+    "holder_count": "holder_count",
 }
 
 
@@ -301,7 +316,9 @@ def api_day():
       search=<str>           (substring on ticker or contract_address)
       launchpad=a,b,c        (match any)
       groups=g1,g2           (match any — uses LIKE on the comma-joined field)
-      sort=call_count:desc   (field: call_count|first_seen_at|last_seen_at|ticker|launchpad)
+      sort=call_count:desc   (field: call_count|first_seen_at|last_seen_at|ticker|
+                              launchpad|market_cap|price_change_h24|holder_count)
+      min_holders=N          (filter: keep token if holder_count IS NULL or >= N)
     """
     if not Path(DB_PATH).exists():
         return jsonify({"data": [], "rowCount": 0, "pageCount": 0, "ready": False})
@@ -319,6 +336,10 @@ def api_day():
         page_size = max(1, min(500, int(request.args.get("page_size", 50))))
     except ValueError:
         page_size = 50
+    try:
+        min_holders = max(0, int(request.args.get("min_holders", 0)))
+    except ValueError:
+        min_holders = 0
 
     search = (request.args.get("search") or "").strip()
     launchpads = _csv_param(request.args.get("launchpad"))
@@ -327,33 +348,49 @@ def api_day():
         request.args.get("sort"), _DAY_SORT_FIELDS, "call_count", "desc"
     )
 
-    where = ["call_date = ?"]
+    where = ["calls.call_date = ?"]
     params: list = [target.isoformat()]
 
     if search:
-        where.append("(ticker LIKE ? OR contract_address LIKE ?)")
+        where.append("(calls.ticker LIKE ? OR calls.contract_address LIKE ?)")
         like = f"%{search}%"
         params += [like, like]
 
     if launchpads:
-        where.append("launchpad IN (" + ",".join("?" * len(launchpads)) + ")")
+        where.append("calls.launchpad IN (" + ",".join("?" * len(launchpads)) + ")")
         params += launchpads
 
     if groups:
-        where.append("(" + " OR ".join(["groups_mentioned LIKE ?"] * len(groups)) + ")")
+        where.append("(" + " OR ".join(["calls.groups_mentioned LIKE ?"] * len(groups)) + ")")
         params += [f"%{g}%" for g in groups]
 
+    if min_holders > 0:
+        where.append("(gmgn.holder_count IS NULL OR gmgn.holder_count >= ?)")
+        params.append(min_holders)
+
     where_sql = " AND ".join(where)
+    join_sql = (
+        "FROM calls "
+        "LEFT JOIN token_gmgn   gmgn   ON calls.contract_address = gmgn.contract_address "
+        "LEFT JOIN token_prices prices ON calls.contract_address = prices.contract_address"
+    )
     conn = _conn()
     try:
-        total = conn.execute(f"SELECT COUNT(*) FROM calls WHERE {where_sql}", params).fetchone()[0]
+        total = conn.execute(
+            f"SELECT COUNT(*) {join_sql} WHERE {where_sql}", params
+        ).fetchone()[0]
 
         offset = (page - 1) * page_size
         rows = conn.execute(
-            f"""SELECT contract_address, ticker, chain, launchpad, call_count,
-                       first_seen_at, last_seen_at, groups_mentioned
-                FROM calls WHERE {where_sql}
-                ORDER BY {sort_field} {sort_dir}, first_seen_at DESC
+            f"""SELECT calls.contract_address, calls.ticker, calls.chain,
+                       calls.launchpad, calls.call_count,
+                       calls.first_seen_at, calls.last_seen_at,
+                       calls.groups_mentioned
+                {join_sql}
+                WHERE {where_sql}
+                ORDER BY ({sort_field}) IS NULL,
+                         {sort_field} {sort_dir},
+                         calls.first_seen_at DESC
                 LIMIT ? OFFSET ?""",
             params + [page_size, offset],
         ).fetchall()
@@ -386,7 +423,7 @@ def api_range():
 
     Query params:
       from=YYYY-MM-DD, to=YYYY-MM-DD (default: last 7 days)
-      page, page_size, search, launchpad, groups, sort
+      page, page_size, search, launchpad, groups, sort, min_holders
     """
     if not Path(DB_PATH).exists():
         return jsonify({"data": [], "rowCount": 0, "pageCount": 0, "ready": False})
@@ -411,65 +448,74 @@ def api_range():
         page_size = max(1, min(500, int(request.args.get("page_size", 50))))
     except ValueError:
         page_size = 50
+    try:
+        min_holders = max(0, int(request.args.get("min_holders", 0)))
+    except ValueError:
+        min_holders = 0
 
     search = (request.args.get("search") or "").strip()
     launchpads = _csv_param(request.args.get("launchpad"))
     groups = _csv_param(request.args.get("groups"))
-    range_sort = {
-        "call_count": "total_calls",
-        "days_active": "days_active",
-        "first_seen_at": "first_seen_at",
-        "last_seen_at": "last_seen_at",
-        "ticker": "ticker",
-        "launchpad": "launchpad",
-    }
     sort_field, sort_dir = _parse_sort(
-        request.args.get("sort"), range_sort, "call_count", "desc"
+        request.args.get("sort"), _RANGE_SORT_FIELDS, "call_count", "desc"
     )
 
-    having = []
     params: list = [d_from.isoformat(), d_to.isoformat()]
-    row_where = ["call_date >= ?", "call_date <= ?"]
+    row_where = ["calls.call_date >= ?", "calls.call_date <= ?"]
 
     if search:
-        row_where.append("(ticker LIKE ? OR contract_address LIKE ?)")
+        row_where.append("(calls.ticker LIKE ? OR calls.contract_address LIKE ?)")
         like = f"%{search}%"
         params += [like, like]
 
     if launchpads:
-        row_where.append("launchpad IN (" + ",".join("?" * len(launchpads)) + ")")
+        row_where.append("calls.launchpad IN (" + ",".join("?" * len(launchpads)) + ")")
         params += launchpads
 
     if groups:
-        row_where.append("(" + " OR ".join(["groups_mentioned LIKE ?"] * len(groups)) + ")")
+        row_where.append("(" + " OR ".join(["calls.groups_mentioned LIKE ?"] * len(groups)) + ")")
         params += [f"%{g}%" for g in groups]
 
+    if min_holders > 0:
+        row_where.append("(gmgn.holder_count IS NULL OR gmgn.holder_count >= ?)")
+        params.append(min_holders)
+
     where_sql = " AND ".join(row_where)
-    having_sql = (" HAVING " + " AND ".join(having)) if having else ""
+    join_sql = (
+        "FROM calls "
+        "LEFT JOIN token_gmgn   gmgn   ON calls.contract_address = gmgn.contract_address "
+        "LEFT JOIN token_prices prices ON calls.contract_address = prices.contract_address"
+    )
 
     conn = _conn()
     try:
         total = conn.execute(
             f"""SELECT COUNT(*) FROM (
-                 SELECT contract_address FROM calls WHERE {where_sql}
-                 GROUP BY contract_address{having_sql}
+                 SELECT calls.contract_address {join_sql}
+                 WHERE {where_sql}
+                 GROUP BY calls.contract_address
                )""",
             params,
         ).fetchone()[0]
 
         offset = (page - 1) * page_size
         rows = conn.execute(
-            f"""SELECT contract_address,
-                       MAX(ticker)        AS ticker,
-                       MAX(launchpad)     AS launchpad,
-                       SUM(call_count)    AS total_calls,
-                       COUNT(*)           AS days_active,
-                       MIN(first_seen_at) AS first_seen_at,
-                       MAX(last_seen_at)  AS last_seen_at,
-                       GROUP_CONCAT(DISTINCT groups_mentioned) AS groups_raw
-                FROM calls WHERE {where_sql}
-                GROUP BY contract_address{having_sql}
-                ORDER BY {sort_field} {sort_dir}
+            f"""SELECT calls.contract_address                     AS contract_address,
+                       MAX(calls.ticker)                          AS ticker,
+                       MAX(calls.launchpad)                       AS launchpad,
+                       SUM(calls.call_count)                      AS total_calls,
+                       COUNT(DISTINCT calls.call_date)            AS days_active,
+                       MIN(calls.first_seen_at)                   AS first_seen_at,
+                       MAX(calls.last_seen_at)                    AS last_seen_at,
+                       GROUP_CONCAT(DISTINCT calls.groups_mentioned) AS groups_raw,
+                       MAX(gmgn.holder_count)                     AS holder_count,
+                       MAX(prices.market_cap)                     AS market_cap,
+                       MAX(prices.price_change_h24)               AS price_change_h24
+                {join_sql}
+                WHERE {where_sql}
+                GROUP BY calls.contract_address
+                ORDER BY ({sort_field}) IS NULL,
+                         {sort_field} {sort_dir}
                 LIMIT ? OFFSET ?""",
             params + [page_size, offset],
         ).fetchall()

@@ -31,6 +31,9 @@
 	let groups = $state<string[]>(
 		params.get('g') ? params.get('g')!.split(',').filter(Boolean) : []
 	);
+	let minHolders = $state<number>(
+		params.has('mh') ? Number(params.get('mh')) || 0 : 100
+	);
 
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
@@ -53,6 +56,7 @@
 		if (sortDir !== 'desc') sp.set('sortDir', sortDir);
 		if (launchpads.length > 0) sp.set('lp', launchpads.join(','));
 		if (groups.length > 0) sp.set('g', groups.join(','));
+		if (minHolders !== 100) sp.set('mh', String(minHolders));
 		goto(`?${sp}`, { replaceState: true, noScroll: true, keepFocus: true });
 	});
 
@@ -67,7 +71,8 @@
 			sortField,
 			sortDir,
 			launchpads.join(','),
-			groups.join(',')
+			groups.join(','),
+			minHolders
 		],
 		queryFn: () =>
 			api.range({
@@ -78,7 +83,8 @@
 				search,
 				sort: `${sortField}:${sortDir}`,
 				launchpad: launchpads.length > 0 ? launchpads : undefined,
-				groups: groups.length > 0 ? groups : undefined
+				groups: groups.length > 0 ? groups : undefined,
+				minHolders
 			}),
 		placeholderData: keepPreviousData,
 		refetchInterval: 60_000
@@ -89,7 +95,8 @@
 			sortDir = sortDir === 'asc' ? 'desc' : 'asc';
 		} else {
 			sortField = field;
-			sortDir = field === 'ticker' || field === 'launchpad' ? 'asc' : 'desc';
+			const ascByDefault: RangeSortField[] = ['ticker', 'launchpad'];
+			sortDir = ascByDefault.includes(field) ? 'asc' : 'desc';
 		}
 		pageNum = 1;
 	}
@@ -117,6 +124,7 @@
 		search = '';
 		launchpads = [];
 		groups = [];
+		minHolders = 100;
 		sortField = 'call_count';
 		sortDir = 'desc';
 		pageNum = 1;
@@ -129,6 +137,7 @@
 		search !== '' ||
 			launchpads.length > 0 ||
 			groups.length > 0 ||
+			minHolders !== 100 ||
 			sortField !== 'call_count' ||
 			sortDir !== 'desc'
 	);
@@ -218,6 +227,17 @@
 				/>
 			{/each}
 		</div>
+		<label class="flex items-center gap-2 text-xs text-zinc-400">
+			<span class="uppercase tracking-wider text-[10px] text-zinc-500">Min holders</span>
+			<input
+				type="number"
+				min="0"
+				step="10"
+				bind:value={minHolders}
+				oninput={() => (pageNum = 1)}
+				class="bg-zinc-900/60 border border-zinc-700 rounded px-2 py-1 w-20 tabular-nums focus:outline-none focus:border-zinc-500"
+			/>
+		</label>
 	</FilterBar>
 
 	<div class="rounded-lg border border-zinc-800 overflow-x-auto mt-4">
@@ -242,8 +262,14 @@
 						class="text-right px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
 						onclick={() => toggleSort('days_active')}
 					>Days {arrow('days_active')}</th>
-					<th class="text-right px-3 py-2 font-normal">MC</th>
-					<th class="text-right px-3 py-2 font-normal">24h</th>
+					<th
+						class="text-right px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
+						onclick={() => toggleSort('market_cap')}
+					>MC {arrow('market_cap')}</th>
+					<th
+						class="text-right px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
+						onclick={() => toggleSort('price_change_h24')}
+					>24h {arrow('price_change_h24')}</th>
 					<th class="text-left px-3 py-2 font-normal">Description</th>
 					<th class="text-left px-3 py-2 font-normal">Groups</th>
 					<th
@@ -254,7 +280,10 @@
 						class="text-left px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
 						onclick={() => toggleSort('last_seen_at')}
 					>Last {arrow('last_seen_at')}</th>
-					<th class="text-right px-3 py-2 font-normal">Holders</th>
+					<th
+						class="text-right px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
+						onclick={() => toggleSort('holder_count')}
+					>Holders {arrow('holder_count')}</th>
 					<th class="text-left px-3 py-2 font-normal">Flags</th>
 				</tr>
 			</thead>

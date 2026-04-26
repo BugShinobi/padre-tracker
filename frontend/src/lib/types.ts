@@ -78,14 +78,25 @@ export type DayResponse = {
 };
 
 export type SortDir = 'asc' | 'desc';
-export type DaySortField = 'call_count' | 'first_seen_at' | 'last_seen_at' | 'ticker' | 'launchpad';
+export type DaySortField =
+	| 'call_count'
+	| 'first_seen_at'
+	| 'last_seen_at'
+	| 'ticker'
+	| 'launchpad'
+	| 'market_cap'
+	| 'price_change_h24'
+	| 'holder_count';
 export type RangeSortField =
 	| 'call_count'
 	| 'days_active'
 	| 'first_seen_at'
 	| 'last_seen_at'
 	| 'ticker'
-	| 'launchpad';
+	| 'launchpad'
+	| 'market_cap'
+	| 'price_change_h24'
+	| 'holder_count';
 
 export type RangeRow = EnrichedRow & { days_active: number };
 

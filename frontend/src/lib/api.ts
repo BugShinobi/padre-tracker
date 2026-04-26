@@ -22,6 +22,7 @@ type ListBaseParams = {
 	sort?: string;
 	launchpad?: string[];
 	groups?: string[];
+	minHolders?: number;
 };
 
 export type DayParams = ListBaseParams & { d?: string };
@@ -34,6 +35,7 @@ function buildList(q: URLSearchParams, p: ListBaseParams) {
 	if (p.sort) q.set('sort', p.sort);
 	if (p.launchpad?.length) q.set('launchpad', p.launchpad.join(','));
 	if (p.groups?.length) q.set('groups', p.groups.join(','));
+	if (p.minHolders && p.minHolders > 0) q.set('min_holders', String(p.minHolders));
 }
 
 export const api = {
