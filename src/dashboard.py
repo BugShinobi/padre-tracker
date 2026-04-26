@@ -509,18 +509,16 @@ def api_range():
 
 
 # --------------------------------------------------------------------- SPA host
-# Catch-all for client-side routing: any path not matched above falls back to
-# index.html so the SvelteKit app can take over. Real static files (/_app/*,
-# /favicon.svg, etc.) are served by Flask's automatic static handling because
-# of static_folder + static_url_path='' on the Flask() ctor.
-@app.route("/", defaults={"path": ""})
-@app.route("/<path:path>")
-def spa(path: str):
-    build = Path(app.static_folder)
-    target = build / path
-    if path and target.is_file():
-        return send_from_directory(build, path)
-    return send_from_directory(build, "index.html")
+# With static_url_path='' the Flask static handler claims `/<path:filename>` and
+# returns 404 directly when the file doesn't exist — so a hard-reload on
+# /day or /t/abc never reaches our catch-all. The 404 errorhandler below pulls
+# those non-API paths back into the SPA by serving index.html (SvelteKit then
+# resolves the route client-side).
+@app.errorhandler(404)
+def spa_fallback(_e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "not found"}), 404
+    return send_from_directory(app.static_folder, "index.html")
 
 
 if __name__ == "__main__":
