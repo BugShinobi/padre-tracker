@@ -43,6 +43,10 @@ export function fmtTime(iso: string): string {
 	return iso.length >= 16 ? iso.slice(11, 16) : iso;
 }
 
+export function fmtDateTime(iso: string): string {
+	return iso.length >= 16 ? `${iso.slice(5, 10)} ${iso.slice(11, 16)}` : iso;
+}
+
 export function todayIso(): string {
 	return toIso(new Date());
 }

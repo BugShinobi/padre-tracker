@@ -1,4 +1,4 @@
-import type { OverviewResponse, DayResponse, RangeResponse } from './types';
+import type { OverviewResponse, DayResponse, RangeResponse, TokenResponse } from './types';
 
 class ApiError extends Error {
 	constructor(
@@ -50,7 +50,8 @@ export const api = {
 		if (params.to) q.set('to', params.to);
 		buildList(q, params);
 		return getJson<RangeResponse>(`/api/range?${q}`);
-	}
+	},
+	token: (ca: string) => getJson<TokenResponse>(`/api/token/${encodeURIComponent(ca)}`)
 };
 
 export {

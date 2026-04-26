@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { fmtMc, fmtPct, fmtNum, fmtAge, fmtTime, shortCa } from '$lib/format';
+	import { fmtMc, fmtPct, fmtNum, fmtAge, fmtDateTime, shortCa } from '$lib/format';
 	import type { EnrichedRow } from '$lib/types';
 
 	type Props = {
@@ -11,8 +11,6 @@
 	};
 
 	let { row, index, showDaysActive = false, daysActive, showLast = false }: Props = $props();
-
-	const fmtDate = (iso: string) => (iso.length >= 10 ? iso.slice(5, 10) : iso);
 
 	const changeCls = $derived(
 		row.price_change_h24 == null
@@ -159,12 +157,14 @@
 		{row.groups_mentioned ?? '—'}
 	</td>
 
-	<td class="px-3 py-3 text-zinc-400 tabular-nums text-xs">
-		{showDaysActive ? fmtDate(row.first_seen_at) : fmtTime(row.first_seen_at)}
+	<td class="px-3 py-3 text-zinc-400 tabular-nums text-xs whitespace-nowrap" title={row.first_seen_at}>
+		{fmtDateTime(row.first_seen_at)}
 	</td>
 
 	{#if showLast}
-		<td class="px-3 py-3 text-zinc-400 tabular-nums text-xs">{fmtDate(row.last_seen_at)}</td>
+		<td class="px-3 py-3 text-zinc-400 tabular-nums text-xs whitespace-nowrap" title={row.last_seen_at}>
+			{fmtDateTime(row.last_seen_at)}
+		</td>
 	{/if}
 
 	<td class="px-3 py-3 text-right tabular-nums text-xs text-zinc-400">

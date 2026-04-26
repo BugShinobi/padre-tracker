@@ -7,7 +7,7 @@
 </script>
 
 <div class="border-b border-zinc-800/60 bg-zinc-950/40 backdrop-blur-sm">
-	<div class="mx-auto max-w-6xl px-4 py-2 flex items-center gap-2 overflow-x-auto">
+	<div class="mx-auto max-w-screen-2xl px-4 py-2 flex items-center gap-2 overflow-x-auto">
 		<a
 			href="/live"
 			class="flex items-center gap-1.5 text-xs uppercase tracking-wide text-zinc-400 hover:text-zinc-200 shrink-0 transition-colors"

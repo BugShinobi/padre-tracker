@@ -508,6 +508,64 @@ def api_range():
     })
 
 
+@app.route("/api/token/<ca>")
+def api_token(ca: str):
+    """Detail view for a single contract address: aggregated metrics across all
+    dates seen, enriched with cached price/holder/metadata, plus a per-day call
+    timeline. Used by /t/[ca] in the SPA."""
+    if not Path(DB_PATH).exists():
+        return jsonify({"ready": False}), 503
+
+    if not ca or len(ca) > 64 or not all(c.isalnum() or c in "_-" for c in ca):
+        return jsonify({"error": "invalid ca"}), 400
+
+    conn = _conn()
+    try:
+        agg_row = conn.execute(
+            """SELECT contract_address,
+                      MAX(ticker)        AS ticker,
+                      MAX(launchpad)     AS launchpad,
+                      MAX(chain)         AS chain,
+                      SUM(call_count)    AS call_count,
+                      COUNT(*)           AS days_active,
+                      MIN(first_seen_at) AS first_seen_at,
+                      MAX(last_seen_at)  AS last_seen_at,
+                      GROUP_CONCAT(DISTINCT groups_mentioned) AS groups_raw
+               FROM calls WHERE contract_address = ?
+               GROUP BY contract_address""",
+            (ca,),
+        ).fetchone()
+        if not agg_row:
+            return jsonify({"error": "not found"}), 404
+
+        d = dict(agg_row)
+        groups_set: set[str] = set()
+        for chunk in (d.pop("groups_raw") or "").split(","):
+            g = chunk.strip()
+            if g:
+                groups_set.add(g)
+        d["groups_mentioned"] = ", ".join(sorted(groups_set)) if groups_set else None
+        rows = [d]
+        _enrich_rows(conn, rows)
+        token = rows[0]
+
+        timeline = conn.execute(
+            """SELECT call_date, call_count, first_seen_at, last_seen_at, groups_mentioned
+               FROM calls WHERE contract_address = ?
+               ORDER BY call_date DESC
+               LIMIT 30""",
+            (ca,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ready": True,
+        "token": token,
+        "timeline": [dict(t) for t in timeline],
+    })
+
+
 # --------------------------------------------------------------------- SPA host
 # With static_url_path='' the Flask static handler claims `/<path:filename>` and
 # returns 404 directly when the file doesn't exist — so a hard-reload on

@@ -29,7 +29,7 @@
 <QueryClientProvider client={queryClient}>
 	<div class="min-h-screen">
 		<header class="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur sticky top-0 z-10">
-			<div class="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between gap-4">
+			<div class="mx-auto max-w-screen-2xl px-4 py-3 flex items-center justify-between gap-4">
 				<a href="/" class="font-semibold tracking-tight flex items-center gap-2">
 					<span class="text-emerald-400">◉</span>
 					<span>padre-tracker</span>
@@ -46,7 +46,7 @@
 			</div>
 		</header>
 		<LiveTicker />
-		<main class="mx-auto max-w-6xl px-4 py-6">
+		<main class="mx-auto max-w-screen-2xl px-4 py-6">
 			{@render children()}
 		</main>
 	</div>

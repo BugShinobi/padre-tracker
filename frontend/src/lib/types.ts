@@ -89,6 +89,22 @@ export type RangeSortField =
 
 export type RangeRow = EnrichedRow & { days_active: number };
 
+export type TokenDetail = EnrichedRow & { days_active: number };
+
+export type TokenTimelineEntry = {
+	call_date: string;
+	call_count: number;
+	first_seen_at: string;
+	last_seen_at: string;
+	groups_mentioned: string | null;
+};
+
+export type TokenResponse = {
+	ready: boolean;
+	token: TokenDetail;
+	timeline: TokenTimelineEntry[];
+};
+
 export type RangeResponse = {
 	ready: boolean;
 	data: RangeRow[];

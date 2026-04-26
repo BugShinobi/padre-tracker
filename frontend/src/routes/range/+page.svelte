@@ -9,6 +9,10 @@
 	import TokenRow from '$lib/components/TokenRow.svelte';
 
 	const KNOWN_LAUNCHPADS = ['pump.fun', 'BAGS', 'bonk.fun', 'moon.it', 'printr.brrr'];
+	const KNOWN_GROUPS = [
+		'Prosperity', 'Pastel Alpha', 'Cryptic', 'Serenity', 'Incognito',
+		'TAG', 'Potion', 'Pumpfun Trenches', 'Minted', 'Digi World'
+	];
 	const params = pageStore.url.searchParams;
 
 	let dFrom = $state(params.get('from') || daysAgoIso(6));
@@ -23,6 +27,9 @@
 	let sortDir = $state<SortDir>((params.get('sortDir') as SortDir) || 'desc');
 	let launchpads = $state<string[]>(
 		params.get('lp') ? params.get('lp')!.split(',').filter(Boolean) : []
+	);
+	let groups = $state<string[]>(
+		params.get('g') ? params.get('g')!.split(',').filter(Boolean) : []
 	);
 
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -45,6 +52,7 @@
 		if (sortField !== 'call_count') sp.set('sortField', sortField);
 		if (sortDir !== 'desc') sp.set('sortDir', sortDir);
 		if (launchpads.length > 0) sp.set('lp', launchpads.join(','));
+		if (groups.length > 0) sp.set('g', groups.join(','));
 		goto(`?${sp}`, { replaceState: true, noScroll: true, keepFocus: true });
 	});
 
@@ -58,7 +66,8 @@
 			search,
 			sortField,
 			sortDir,
-			launchpads.join(',')
+			launchpads.join(','),
+			groups.join(',')
 		],
 		queryFn: () =>
 			api.range({
@@ -68,7 +77,8 @@
 				pageSize,
 				search,
 				sort: `${sortField}:${sortDir}`,
-				launchpad: launchpads.length > 0 ? launchpads : undefined
+				launchpad: launchpads.length > 0 ? launchpads : undefined,
+				groups: groups.length > 0 ? groups : undefined
 			}),
 		placeholderData: keepPreviousData,
 		refetchInterval: 60_000
@@ -97,10 +107,16 @@
 		pageNum = 1;
 	}
 
+	function toggleGroup(g: string) {
+		groups = groups.includes(g) ? groups.filter((x) => x !== g) : [...groups, g];
+		pageNum = 1;
+	}
+
 	function resetFilters() {
 		searchInput = '';
 		search = '';
 		launchpads = [];
+		groups = [];
 		sortField = 'call_count';
 		sortDir = 'desc';
 		pageNum = 1;
@@ -112,6 +128,7 @@
 	const hasFilters = $derived(
 		search !== '' ||
 			launchpads.length > 0 ||
+			groups.length > 0 ||
 			sortField !== 'call_count' ||
 			sortDir !== 'desc'
 	);
@@ -180,6 +197,7 @@
 			class="bg-zinc-900/60 border border-zinc-700 rounded-full px-3 py-1 text-sm w-56 focus:outline-none focus:border-zinc-500"
 		/>
 		<div class="flex items-center gap-1.5 flex-wrap">
+			<span class="text-[10px] uppercase tracking-wider text-zinc-500 mr-1">LP</span>
 			{#each KNOWN_LAUNCHPADS as lp}
 				<FilterChip
 					active={launchpads.includes(lp)}
@@ -187,6 +205,16 @@
 					variant="launchpad"
 					color={lp}
 					onclick={() => toggleLaunchpad(lp)}
+				/>
+			{/each}
+		</div>
+		<div class="flex items-center gap-1.5 flex-wrap">
+			<span class="text-[10px] uppercase tracking-wider text-zinc-500 mr-1">Group</span>
+			{#each KNOWN_GROUPS as g}
+				<FilterChip
+					active={groups.includes(g)}
+					label={g}
+					onclick={() => toggleGroup(g)}
 				/>
 			{/each}
 		</div>
