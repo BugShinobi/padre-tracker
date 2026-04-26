@@ -36,23 +36,16 @@
 	});
 
 	$effect(() => {
-		const url = new URL(pageStore.url);
-		const sp = url.searchParams;
+		const sp = new URLSearchParams();
 		sp.set('from', dFrom);
 		sp.set('to', dTo);
 		if (pageNum > 1) sp.set('page', String(pageNum));
-		else sp.delete('page');
 		if (pageSize !== 50) sp.set('pageSize', String(pageSize));
-		else sp.delete('pageSize');
 		if (search) sp.set('search', search);
-		else sp.delete('search');
 		if (sortField !== 'call_count') sp.set('sortField', sortField);
-		else sp.delete('sortField');
 		if (sortDir !== 'desc') sp.set('sortDir', sortDir);
-		else sp.delete('sortDir');
 		if (launchpads.length > 0) sp.set('lp', launchpads.join(','));
-		else sp.delete('lp');
-		goto(url, { replaceState: true, noScroll: true, keepFocus: true });
+		goto(`?${sp}`, { replaceState: true, noScroll: true, keepFocus: true });
 	});
 
 	const rangeQuery = createQuery(() => ({
