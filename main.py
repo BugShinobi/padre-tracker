@@ -3,9 +3,7 @@
 import logging
 import os
 import signal
-import sqlite3
 import sys
-import threading
 import time
 from datetime import date
 from pathlib import Path
@@ -17,7 +15,6 @@ from src.db import (
     purge_low_quality, purge_no_group, record_new_call, reset_today_counts, touch_seen,
 )
 from src.export_csv import export_daily_csv
-from src.gmgn import get_gmgn
 from src.scraper import (
     detect_launchpad, dump_page_html, get_live_page,
     launch_browser, navigate_to_alpha, register_page_listeners, scrape_alpha_tracker,
@@ -46,46 +43,6 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger("padre-tracker")
-
-
-def _gmgn_prewarm(db_path: str, ca: str) -> None:
-    """Fire-and-forget: fetch GMGN data for a single CA into the cache."""
-    try:
-        c = sqlite3.connect(db_path)
-        c.row_factory = sqlite3.Row
-        get_gmgn(c, [ca])
-        c.close()
-    except Exception as e:
-        log.debug("GMGN prewarm failed for %s: %s", ca[:8], e)
-
-
-def _gmgn_backfill(db_path: str) -> None:
-    """Startup backfill: fetch GMGN for recent CAs not yet in cache (background thread)."""
-    try:
-        c = sqlite3.connect(db_path)
-        c.row_factory = sqlite3.Row
-        from src.gmgn import init_cache as _ginit
-        _ginit(c)
-        rows = c.execute(
-            """SELECT DISTINCT calls.contract_address
-               FROM calls
-               LEFT JOIN token_gmgn g ON calls.contract_address = g.contract_address
-               WHERE calls.call_date >= date('now', '-3 days')
-                 AND g.contract_address IS NULL
-               LIMIT 200"""
-        ).fetchall()
-        cas = [r["contract_address"] for r in rows]
-        c.close()
-        if not cas:
-            return
-        log.info("GMGN backfill: %d CAs without cache", len(cas))
-        c2 = sqlite3.connect(db_path)
-        c2.row_factory = sqlite3.Row
-        get_gmgn(c2, cas)
-        c2.close()
-        log.info("GMGN backfill complete")
-    except Exception as e:
-        log.warning("GMGN backfill error: %s", e)
 
 
 def setup_dirs():
@@ -117,9 +74,6 @@ def main():
     reset = reset_today_counts(conn)
     if reset:
         log.info("Reset call_count=1 on %d today-rows (fixing pre-bug inflated counters)", reset)
-
-    # GMGN backfill in background — fetch data for recent CAs missing from cache
-    threading.Thread(target=_gmgn_backfill, args=(DB_PATH,), daemon=True).start()
 
     pw, context = launch_browser(SESSION_DIR)
     register_page_listeners(context)
@@ -185,10 +139,6 @@ def main():
                             "NEW    %s  ticker=%s  launchpad=%s  groups=%s",
                             ca, call.get("ticker"), call.get("launchpad"), call.get("groups_mentioned"),
                         )
-                        # Pre-warm GMGN cache in background so dashboard reads are instant
-                        threading.Thread(
-                            target=_gmgn_prewarm, args=(DB_PATH, ca), daemon=True
-                        ).start()
                     elif result == "RECALL":
                         log.info("RECALL %s  (re-appeared on feed)", ca)
                 else:

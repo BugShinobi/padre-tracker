@@ -163,6 +163,26 @@ def _write_cache(conn: sqlite3.Connection, ca: str, pair: dict | None, now: int)
     )
 
 
+def get_prices_cached(conn: sqlite3.Connection, cas: list[str]) -> dict[str, dict]:
+    """Cache-only read. Never performs HTTP. Returns whatever is in token_prices.
+
+    Used by the dashboard request path now that padre-workers populates prices
+    in the background. Missing CAs are simply omitted from the returned dict —
+    the caller treats absence as "no data yet" rather than blocking on HTTP.
+    """
+    if not cas:
+        return {}
+
+    init_cache(conn)
+    cas = list(dict.fromkeys(cas))
+    placeholders = ",".join("?" * len(cas))
+    rows = conn.execute(
+        f"SELECT * FROM token_prices WHERE contract_address IN ({placeholders})",
+        tuple(cas),
+    ).fetchall()
+    return {r["contract_address"]: dict(r) for r in rows}
+
+
 def get_prices(
     conn: sqlite3.Connection,
     cas: list[str],

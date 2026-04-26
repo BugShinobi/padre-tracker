@@ -15,11 +15,9 @@ from pathlib import Path
 from flask import Flask, Response, request, jsonify, send_from_directory, stream_with_context
 
 import aggregations as agg
-import gmgn_worker
-import metadata_worker
 from cache import ttl_cache
 from db import init_db
-from enrich import get_prices
+from enrich import get_prices_cached
 from gmgn import get_gmgn_cached
 from metadata import get_metadata_cached
 
@@ -37,8 +35,6 @@ log = logging.getLogger("padre-dashboard")
 if Path(DB_PATH).exists():
     _boot = init_db(DB_PATH)
     _boot.close()
-    gmgn_worker.start(DB_PATH)
-    metadata_worker.start(DB_PATH, HELIUS_API_KEY)
 
 
 def _conn() -> sqlite3.Connection:
@@ -179,7 +175,7 @@ def api_stream_calls():
                 yield "event: ping\ndata: {}\n\n"
                 last_ping = now_mono
 
-            time.sleep(1)
+            time.sleep(2)
 
     return Response(
         gen(),
@@ -229,11 +225,9 @@ def _enrich_rows(conn: sqlite3.Connection, rows: list[dict]) -> None:
     if not rows:
         return
     cas = [r["contract_address"] for r in rows]
-    prices = get_prices(conn, cas)
-    gmgn_data, stale = get_gmgn_cached(conn, cas)
-    gmgn_worker.enqueue_refresh(stale)
-    meta_data, meta_stale = get_metadata_cached(conn, cas)
-    metadata_worker.enqueue_refresh(meta_stale)
+    prices = get_prices_cached(conn, cas)
+    gmgn_data, _ = get_gmgn_cached(conn, cas)
+    meta_data, _ = get_metadata_cached(conn, cas)
     for r in rows:
         p = prices.get(r["contract_address"]) or {}
         r["price_usd"] = _safe_float(p.get("price_usd"))
