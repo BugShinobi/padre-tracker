@@ -3,8 +3,9 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 	import { onMount } from 'svelte';
-	import { connectSse, disconnectSse } from '$lib/sse.svelte';
+	import { connectSse, disconnectSse, live } from '$lib/sse.svelte';
 	import LiveTicker from '$lib/components/LiveTicker.svelte';
+	import StatusDot from '$lib/components/StatusDot.svelte';
 
 	const queryClient = new QueryClient({
 		defaultOptions: {
@@ -28,12 +29,19 @@
 <QueryClientProvider client={queryClient}>
 	<div class="min-h-screen">
 		<header class="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur sticky top-0 z-10">
-			<div class="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
-				<a href="/" class="font-semibold tracking-tight">padre-tracker</a>
-				<nav class="text-sm text-zinc-400 flex gap-4">
-					<a href="/" class="hover:text-zinc-100">Home</a>
-					<a href="/day" class="hover:text-zinc-100">Day</a>
-					<a href="/range" class="hover:text-zinc-100">Range</a>
+			<div class="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between gap-4">
+				<a href="/" class="font-semibold tracking-tight flex items-center gap-2">
+					<span class="text-emerald-400">◉</span>
+					<span>padre-tracker</span>
+				</a>
+				<nav class="text-sm text-zinc-400 flex items-center gap-4">
+					<a href="/" class="hover:text-zinc-100 transition-colors">Home</a>
+					<a href="/day" class="hover:text-zinc-100 transition-colors">Day</a>
+					<a href="/range" class="hover:text-zinc-100 transition-colors">Range</a>
+					<a href="/live" class="hover:text-zinc-100 transition-colors flex items-center gap-1.5">
+						<StatusDot connected={live.connected} />
+						<span>Live</span>
+					</a>
 				</nav>
 			</div>
 		</header>

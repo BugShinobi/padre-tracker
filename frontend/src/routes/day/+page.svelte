@@ -2,20 +2,28 @@
 	import { page as pageStore } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
-	import { api, fmtMc, fmtPct, fmtNum, shortCa, fmtAge, fmtTime, todayIso } from '$lib/api';
-	import type { DaySortField, SortDir, EnrichedRow } from '$lib/types';
-	import { flip } from 'svelte/animate';
-	import { fade } from 'svelte/transition';
+	import { api, fmtNum, todayIso } from '$lib/api';
+	import type { DaySortField, SortDir } from '$lib/types';
+	import FilterBar from '$lib/components/FilterBar.svelte';
+	import FilterChip from '$lib/components/FilterChip.svelte';
+	import TokenRow from '$lib/components/TokenRow.svelte';
 
-	const initialDate = pageStore.url.searchParams.get('d') || todayIso();
+	const KNOWN_LAUNCHPADS = ['pump.fun', 'BAGS', 'bonk.fun', 'moon.it', 'printr.brrr'];
 
-	let date = $state(initialDate);
-	let pageNum = $state(1);
-	let pageSize = $state(50);
-	let searchInput = $state('');
-	let search = $state('');
-	let sortField = $state<DaySortField>('call_count');
-	let sortDir = $state<SortDir>('desc');
+	const params = pageStore.url.searchParams;
+
+	let date = $state(params.get('d') || todayIso());
+	let pageNum = $state(Number(params.get('page')) || 1);
+	let pageSize = $state(Number(params.get('pageSize')) || 50);
+	let searchInput = $state(params.get('search') || '');
+	let search = $state(params.get('search') || '');
+	let sortField = $state<DaySortField>(
+		(params.get('sortField') as DaySortField) || 'call_count'
+	);
+	let sortDir = $state<SortDir>((params.get('sortDir') as SortDir) || 'desc');
+	let launchpads = $state<string[]>(
+		params.get('lp') ? params.get('lp')!.split(',').filter(Boolean) : []
+	);
 
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
@@ -29,19 +37,33 @@
 
 	$effect(() => {
 		const url = new URL(pageStore.url);
-		url.searchParams.set('d', date);
+		const sp = url.searchParams;
+		sp.set('d', date);
+		if (pageNum > 1) sp.set('page', String(pageNum));
+		else sp.delete('page');
+		if (pageSize !== 50) sp.set('pageSize', String(pageSize));
+		else sp.delete('pageSize');
+		if (search) sp.set('search', search);
+		else sp.delete('search');
+		if (sortField !== 'call_count') sp.set('sortField', sortField);
+		else sp.delete('sortField');
+		if (sortDir !== 'desc') sp.set('sortDir', sortDir);
+		else sp.delete('sortDir');
+		if (launchpads.length > 0) sp.set('lp', launchpads.join(','));
+		else sp.delete('lp');
 		goto(url, { replaceState: true, noScroll: true, keepFocus: true });
 	});
 
 	const dayQuery = createQuery(() => ({
-		queryKey: ['day', date, pageNum, pageSize, search, sortField, sortDir],
+		queryKey: ['day', date, pageNum, pageSize, search, sortField, sortDir, launchpads.join(',')],
 		queryFn: () =>
 			api.day({
 				d: date,
 				page: pageNum,
 				pageSize,
 				search,
-				sort: `${sortField}:${sortDir}`
+				sort: `${sortField}:${sortDir}`,
+				launchpad: launchpads.length > 0 ? launchpads : undefined
 			}),
 		placeholderData: keepPreviousData,
 		refetchInterval: 60_000
@@ -57,89 +79,89 @@
 		pageNum = 1;
 	}
 
+	function toggleLaunchpad(lp: string) {
+		launchpads = launchpads.includes(lp)
+			? launchpads.filter((x) => x !== lp)
+			: [...launchpads, lp];
+		pageNum = 1;
+	}
+
+	function resetFilters() {
+		searchInput = '';
+		search = '';
+		launchpads = [];
+		sortField = 'call_count';
+		sortDir = 'desc';
+		pageNum = 1;
+	}
+
 	const arrow = (field: DaySortField) =>
 		sortField === field ? (sortDir === 'desc' ? '↓' : '↑') : '';
 
-	const changeClass = (v: number | null | undefined) =>
-		v == null ? 'text-zinc-500' : v >= 0 ? 'text-emerald-400' : 'text-rose-400';
-
-	const launchpadBadge = (lp: string | null) => {
-		if (!lp) return 'bg-zinc-800 text-zinc-400';
-		const k = lp.split('.')[0];
-		switch (k) {
-			case 'pump':
-				return 'bg-amber-900/40 text-amber-300';
-			case 'BAGS':
-				return 'bg-purple-900/40 text-purple-300';
-			case 'bonk':
-				return 'bg-orange-900/40 text-orange-300';
-			case 'moon':
-				return 'bg-blue-900/40 text-blue-300';
-			case 'printr':
-				return 'bg-emerald-900/40 text-emerald-300';
-			default:
-				return 'bg-zinc-800 text-zinc-300';
-		}
-	};
-
-	const flagBadge = (r: EnrichedRow) => {
-		const flags: string[] = [];
-		if (r.renounced) flags.push('RNK');
-		if (r.renounced_mint) flags.push('MNT');
-		if (r.renounced_freeze) flags.push('FRZ');
-		if (r.burn_status === 'burn') flags.push('LP');
-		return flags;
-	};
+	const hasFilters = $derived(
+		search !== '' ||
+			launchpads.length > 0 ||
+			sortField !== 'call_count' ||
+			sortDir !== 'desc'
+	);
 </script>
 
 <section>
-	<div class="flex flex-wrap items-end gap-3 mb-4">
+	<header class="mb-4 flex items-end justify-between gap-4 flex-wrap">
 		<div>
-			<label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1" for="date">Date</label>
-			<input
-				id="date"
-				type="date"
-				bind:value={date}
-				oninput={() => (pageNum = 1)}
-				class="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-zinc-500"
-			/>
+			<h1 class="text-3xl font-semibold tracking-tight">Day</h1>
+			<div class="flex items-center gap-3 mt-1">
+				<input
+					id="date"
+					type="date"
+					bind:value={date}
+					oninput={() => (pageNum = 1)}
+					class="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-zinc-500"
+				/>
+				<select
+					id="psize"
+					bind:value={pageSize}
+					onchange={() => (pageNum = 1)}
+					class="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-zinc-500"
+				>
+					<option value={25}>25/page</option>
+					<option value={50}>50/page</option>
+					<option value={100}>100/page</option>
+					<option value={200}>200/page</option>
+				</select>
+			</div>
 		</div>
-		<div class="flex-1 min-w-[200px]">
-			<label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1" for="search">
-				Search ticker / CA
-			</label>
-			<input
-				id="search"
-				type="text"
-				bind:value={searchInput}
-				placeholder="e.g. PEPE or 4Bx…"
-				class="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-zinc-500"
-			/>
-		</div>
-		<div>
-			<label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1" for="psize">Per page</label>
-			<select
-				id="psize"
-				bind:value={pageSize}
-				onchange={() => (pageNum = 1)}
-				class="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-zinc-500"
-			>
-				<option value={25}>25</option>
-				<option value={50}>50</option>
-				<option value={100}>100</option>
-				<option value={200}>200</option>
-			</select>
-		</div>
-		<div class="text-sm text-zinc-500 ml-auto">
+		<div class="text-sm text-zinc-500 text-right">
 			{#if dayQuery.isFetching}
 				<span class="text-zinc-400">refreshing…</span>
 			{:else if dayQuery.data?.ready}
-				{fmtNum(dayQuery.data.rowCount)} rows · page {dayQuery.data.page} of {dayQuery.data.pageCount}
+				<div class="text-zinc-300 tabular-nums">{fmtNum(dayQuery.data.rowCount)} rows</div>
+				<div class="text-xs">page {dayQuery.data.page} of {dayQuery.data.pageCount}</div>
 			{/if}
 		</div>
-	</div>
+	</header>
 
-	<div class="rounded-lg border border-zinc-800 overflow-hidden">
+	<FilterBar hasActiveFilters={hasFilters} onreset={resetFilters}>
+		<input
+			type="text"
+			bind:value={searchInput}
+			placeholder="Search ticker or CA…"
+			class="bg-zinc-900/60 border border-zinc-700 rounded-full px-3 py-1 text-sm w-56 focus:outline-none focus:border-zinc-500"
+		/>
+		<div class="flex items-center gap-1.5 flex-wrap">
+			{#each KNOWN_LAUNCHPADS as lp}
+				<FilterChip
+					active={launchpads.includes(lp)}
+					label={lp.split('.')[0]}
+					variant="launchpad"
+					color={lp}
+					onclick={() => toggleLaunchpad(lp)}
+				/>
+			{/each}
+		</div>
+	</FilterBar>
+
+	<div class="rounded-lg border border-zinc-800 overflow-x-auto mt-4">
 		<table class="w-full text-sm">
 			<thead class="bg-zinc-900/60 text-zinc-400 uppercase text-xs tracking-wider">
 				<tr>
@@ -148,7 +170,7 @@
 						class="text-left px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
 						onclick={() => toggleSort('ticker')}
 					>
-						Ticker {arrow('ticker')}
+						Token {arrow('ticker')}
 					</th>
 					<th class="text-left px-3 py-2 font-normal">CA</th>
 					<th
@@ -165,6 +187,7 @@
 					</th>
 					<th class="text-right px-3 py-2 font-normal">MC</th>
 					<th class="text-right px-3 py-2 font-normal">24h</th>
+					<th class="text-left px-3 py-2 font-normal">Description</th>
 					<th class="text-left px-3 py-2 font-normal">Groups</th>
 					<th
 						class="text-left px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
@@ -172,112 +195,25 @@
 					>
 						First {arrow('first_seen_at')}
 					</th>
-					<th
-						class="text-left px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
-						onclick={() => toggleSort('last_seen_at')}
-					>
-						Last {arrow('last_seen_at')}
-					</th>
 					<th class="text-right px-3 py-2 font-normal">Holders</th>
 					<th class="text-left px-3 py-2 font-normal">Flags</th>
 				</tr>
 			</thead>
 			<tbody>
 				{#if dayQuery.isPending}
-					<tr><td colspan="12" class="px-3 py-8 text-center text-zinc-500">Loading…</td></tr>
+					<tr><td colspan="13" class="px-3 py-8 text-center text-zinc-500">Loading…</td></tr>
 				{:else if dayQuery.isError}
-					<tr><td colspan="12" class="px-3 py-8 text-center text-rose-400">
+					<tr><td colspan="13" class="px-3 py-8 text-center text-rose-400">
 						Error: {dayQuery.error.message}
 					</td></tr>
 				{:else if !dayQuery.data?.ready || dayQuery.data.data.length === 0}
-					<tr><td colspan="12" class="px-3 py-8 text-center text-zinc-500">No calls.</td></tr>
+					<tr><td colspan="13" class="px-3 py-8 text-center text-zinc-500">No calls.</td></tr>
 				{:else}
 					{#each dayQuery.data.data as r, i (r.contract_address)}
-						<tr
-							class="border-t border-zinc-800 hover:bg-zinc-900/30"
-							animate:flip={{ duration: 250 }}
-							in:fade={{ duration: 150 }}
-							out:fade={{ duration: 100 }}
-						>
-							<td class="px-3 py-2 text-zinc-500 tabular-nums">
-								{(dayQuery.data.page - 1) * dayQuery.data.pageSize + i + 1}
-							</td>
-							<td class="px-3 py-2">
-								<div class="flex items-center gap-2">
-									{#if r.image_url}
-										<img
-											src={r.image_url}
-											alt=""
-											class="w-6 h-6 rounded-full object-cover bg-zinc-800 shrink-0"
-											loading="lazy"
-											referrerpolicy="no-referrer"
-										/>
-									{:else}
-										<div class="w-6 h-6 rounded-full bg-zinc-800 shrink-0"></div>
-									{/if}
-									<span
-										class="font-medium {r.ticker ? '' : 'text-zinc-500 italic'}"
-										title={r.description ?? r.name ?? ''}
-									>{r.ticker ?? 'unknown'}</span>
-								</div>
-							</td>
-							<td class="px-3 py-2">
-								<div class="flex items-center gap-2">
-									<span class="font-mono text-xs text-zinc-400">{shortCa(r.contract_address)}</span>
-									<span class="text-xs text-zinc-500">{fmtAge(r.creation_timestamp)}</span>
-									<span class="flex gap-1 text-xs">
-										<a
-											href="https://dexscreener.com/solana/{r.contract_address}"
-											target="_blank"
-											rel="noopener"
-											class="text-blue-400 hover:underline"
-											title="DexScreener">D</a>
-										<a
-											href="https://gmgn.ai/sol/token/{r.contract_address}"
-											target="_blank"
-											rel="noopener"
-											class="text-emerald-400 hover:underline"
-											title="GMGN">G</a>
-										<a
-											href="https://trade.padre.gg/trade/solana/{r.contract_address}"
-											target="_blank"
-											rel="noopener"
-											class="text-amber-400 hover:underline"
-											title="Padre">P</a>
-									</span>
-								</div>
-							</td>
-							<td class="px-3 py-2">
-								<span class="px-2 py-0.5 rounded text-xs {launchpadBadge(r.launchpad)}">
-									{r.launchpad ?? '—'}
-								</span>
-							</td>
-							<td class="px-3 py-2 text-right tabular-nums font-medium">{r.call_count}</td>
-							<td class="px-3 py-2 text-right tabular-nums">
-								<div>{fmtMc(r.market_cap)}</div>
-								{#if r.market_cap_ath && (!r.market_cap || r.market_cap_ath > r.market_cap)}
-									<div class="text-xs text-zinc-500" title="ATH since tracking">
-										ATH {fmtMc(r.market_cap_ath)}
-									</div>
-								{/if}
-							</td>
-							<td class="px-3 py-2 text-right tabular-nums {changeClass(r.price_change_h24)}">
-								{fmtPct(r.price_change_h24)}
-							</td>
-							<td class="px-3 py-2 text-zinc-300 text-xs">{r.groups_mentioned ?? '—'}</td>
-							<td class="px-3 py-2 text-zinc-400 tabular-nums text-xs">{fmtTime(r.first_seen_at)}</td>
-							<td class="px-3 py-2 text-zinc-400 tabular-nums text-xs">{fmtTime(r.last_seen_at)}</td>
-							<td class="px-3 py-2 text-right tabular-nums text-xs text-zinc-400">
-								{r.holder_count ? fmtNum(r.holder_count) : '—'}
-							</td>
-							<td class="px-3 py-2">
-								<div class="flex gap-1 flex-wrap">
-									{#each flagBadge(r) as f}
-										<span class="px-1.5 py-0.5 rounded text-xs bg-emerald-900/40 text-emerald-300">{f}</span>
-									{/each}
-								</div>
-							</td>
-						</tr>
+						<TokenRow
+							row={r}
+							index={(dayQuery.data.page - 1) * dayQuery.data.pageSize + i + 1}
+						/>
 					{/each}
 				{/if}
 			</tbody>
@@ -289,7 +225,7 @@
 			<button
 				disabled={pageNum <= 1}
 				onclick={() => (pageNum = Math.max(1, pageNum - 1))}
-				class="px-3 py-1 rounded border border-zinc-700 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed"
+				class="px-3 py-1 rounded border border-zinc-700 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
 			>← Prev</button>
 			<span class="text-zinc-500">
 				Page {dayQuery.data.page} / {dayQuery.data.pageCount}
@@ -297,7 +233,7 @@
 			<button
 				disabled={pageNum >= dayQuery.data.pageCount}
 				onclick={() => (pageNum = Math.min(dayQuery.data?.pageCount ?? 1, pageNum + 1))}
-				class="px-3 py-1 rounded border border-zinc-700 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed"
+				class="px-3 py-1 rounded border border-zinc-700 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
 			>Next →</button>
 		</div>
 	{/if}
