@@ -32,7 +32,7 @@ set -e
 cd ~/padre-tracker
 
 drift=0
-for svc in padre-dashboard padre-tracker; do
+for svc in padre-dashboard padre-tracker padre-workers; do
   if ! diff -q "$svc.service" "/etc/systemd/system/$svc.service" >/dev/null 2>&1; then
     drift=1
     echo
@@ -43,7 +43,13 @@ for svc in padre-dashboard padre-tracker; do
   fi
 done
 
-sudo systemctl restart padre-tracker padre-dashboard
+sudo systemctl restart padre-tracker
+sudo systemctl restart padre-dashboard
+if systemctl list-unit-files padre-workers.service >/dev/null 2>&1; then
+  sudo systemctl restart padre-workers
+else
+  echo "padre-workers.service not installed yet — skip restart"
+fi
 echo "--- status ---"
 systemctl is-active padre-tracker padre-dashboard
 [ "$drift" = "1" ] && echo "WARNING: service files drifted — see messages above"

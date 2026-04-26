@@ -1,0 +1,36 @@
+[Unit]
+Description=Padre Tracker enrichment workers (GMGN, metadata, prices)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cokle
+WorkingDirectory=/home/cokle/padre-tracker
+ExecStart=/home/cokle/padre-tracker/.venv/bin/python -m src.workers
+Restart=on-failure
+RestartSec=10
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# EnvironmentFile= ALWAYS overrides Environment= regardless of order — so the
+# server's .env MUST NOT contain DB_PATH. We rely on the absolute path below.
+# Leading `-` = don't fail if missing.
+EnvironmentFile=-/home/cokle/padre-tracker/.env
+Environment=DB_PATH=/home/cokle/padre-tracker/data/calls.db
+Environment=GMGN_POLL_INTERVAL=30
+Environment=METADATA_POLL_INTERVAL=60
+Environment=PRICES_POLL_INTERVAL=60
+Environment=GMGN_BATCH=50
+Environment=METADATA_BATCH=30
+Environment=PRICES_ACTIVE_DAYS=7
+
+MemoryMax=400M
+CPUQuota=20%
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
