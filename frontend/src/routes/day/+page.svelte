@@ -22,7 +22,7 @@
 	let searchInput = $state(params.get('search') || '');
 	let search = $state(params.get('search') || '');
 	let sortField = $state<DaySortField>(
-		(params.get('sortField') as DaySortField) || 'call_count'
+		(params.get('sortField') as DaySortField) || 'last_seen_at'
 	);
 	let sortDir = $state<SortDir>((params.get('sortDir') as SortDir) || 'desc');
 	let launchpads = $state<string[]>(
@@ -51,7 +51,7 @@
 		if (pageNum > 1) sp.set('page', String(pageNum));
 		if (pageSize !== 50) sp.set('pageSize', String(pageSize));
 		if (search) sp.set('search', search);
-		if (sortField !== 'call_count') sp.set('sortField', sortField);
+		if (sortField !== 'last_seen_at') sp.set('sortField', sortField);
 		if (sortDir !== 'desc') sp.set('sortDir', sortDir);
 		if (launchpads.length > 0) sp.set('lp', launchpads.join(','));
 		if (groups.length > 0) sp.set('g', groups.join(','));
@@ -108,7 +108,7 @@
 		launchpads = [];
 		groups = [];
 		minHolders = 100;
-		sortField = 'call_count';
+		sortField = 'last_seen_at';
 		sortDir = 'desc';
 		pageNum = 1;
 	}
@@ -121,7 +121,7 @@
 			launchpads.length > 0 ||
 			groups.length > 0 ||
 			minHolders !== 100 ||
-			sortField !== 'call_count' ||
+			sortField !== 'last_seen_at' ||
 			sortDir !== 'desc'
 	);
 </script>
