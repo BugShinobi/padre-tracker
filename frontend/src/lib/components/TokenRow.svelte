@@ -23,15 +23,15 @@
 
 	const launchpadBadge = (lp: string | null) => {
 		if (!lp) return 'bg-zinc-800 text-zinc-400';
-		const k = lp.split('.')[0];
+		const k = lp.split('.')[0].toLowerCase();
 		switch (k) {
 			case 'pump':
 				return 'bg-amber-900/40 text-amber-300';
-			case 'BAGS':
+			case 'bags':
 				return 'bg-purple-900/40 text-purple-300';
 			case 'bonk':
 				return 'bg-orange-900/40 text-orange-300';
-			case 'moon':
+			case 'moonshot':
 				return 'bg-blue-900/40 text-blue-300';
 			case 'printr':
 				return 'bg-emerald-900/40 text-emerald-300';

@@ -8,7 +8,7 @@
 	import FilterChip from '$lib/components/FilterChip.svelte';
 	import TokenRow from '$lib/components/TokenRow.svelte';
 
-	const KNOWN_LAUNCHPADS = ['pump.fun', 'BAGS', 'bonk.fun', 'moon.it', 'printr.brrr'];
+	const KNOWN_LAUNCHPADS = ['pump.fun', 'bags.fm', 'bonk.fun', 'moonshot', 'printr'];
 	const KNOWN_GROUPS = [
 		'Prosperity', 'Pastel Alpha', 'Cryptic', 'Serenity', 'Incognito',
 		'TAG', 'Potion', 'Pumpfun Trenches', 'Minted', 'Digi World'

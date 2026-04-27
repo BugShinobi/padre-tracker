@@ -18,15 +18,15 @@
 	}: Props = $props();
 
 	const launchpadColor = (lp: string) => {
-		const k = lp.split('.')[0];
+		const k = lp.split('.')[0].toLowerCase();
 		switch (k) {
 			case 'pump':
 				return 'border-amber-500/50 bg-amber-500/15 text-amber-200';
-			case 'BAGS':
+			case 'bags':
 				return 'border-purple-500/50 bg-purple-500/15 text-purple-200';
 			case 'bonk':
 				return 'border-orange-500/50 bg-orange-500/15 text-orange-200';
-			case 'moon':
+			case 'moonshot':
 				return 'border-blue-500/50 bg-blue-500/15 text-blue-200';
 			case 'printr':
 				return 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200';
