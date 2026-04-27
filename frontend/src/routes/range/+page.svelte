@@ -11,11 +11,13 @@
 	import TokenRow from '$lib/components/TokenRow.svelte';
 
 	const KNOWN_LAUNCHPADS = ['pump.fun', 'bags.fm', 'bonk.fun', 'moonshot', 'printr'];
-	const KNOWN_GROUPS = [
-		'Prosperity', 'Pastel Alpha', 'Cryptic', 'Serenity', 'Incognito',
-		'TAG', 'Potion', 'Pumpfun Trenches', 'Minted', 'Digi World'
-	];
 	const params = pageStore.url.searchParams;
+
+	const topGroupsQuery = createQuery(() => ({
+		queryKey: ['top-groups', 7],
+		queryFn: () => api.topGroups(7, 20),
+		staleTime: 5 * 60_000
+	}));
 
 	let dFrom = $state(params.get('from') || daysAgoIso(6));
 	let dTo = $state(params.get('to') || todayIso());
@@ -210,12 +212,16 @@
 		</div>
 		<div class="flex items-center gap-1.5 flex-wrap">
 			<span class="text-[10px] uppercase tracking-wider text-zinc-500 mr-1">Group</span>
-			{#each KNOWN_GROUPS as g}
+			{#each topGroupsQuery.data?.groups ?? [] as g (g.name)}
 				<FilterChip
-					active={groups.includes(g)}
-					label={g}
-					onclick={() => toggleGroup(g)}
+					active={groups.includes(g.name)}
+					label={g.name}
+					count={g.count}
+					onclick={() => toggleGroup(g.name)}
 				/>
+			{/each}
+			{#each groups.filter((g) => !(topGroupsQuery.data?.groups ?? []).some((tg) => tg.name === g)) as g (g)}
+				<FilterChip active label={g} onclick={() => toggleGroup(g)} />
 			{/each}
 		</div>
 		<label class="flex items-center gap-2 text-xs text-zinc-400">

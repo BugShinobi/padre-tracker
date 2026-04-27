@@ -5,6 +5,12 @@ import type {
 	TokenResponse
 } from './types';
 
+export type TopGroupsResponse = {
+	ready: boolean;
+	groups: { name: string; count: number }[];
+	windowDays: number;
+};
+
 class ApiError extends Error {
 	constructor(
 		message: string,
@@ -63,6 +69,8 @@ export const api = {
 		return getJson<RangeResponse>(`/api/range?${q}`);
 	},
 	token: (ca: string) => getJson<TokenResponse>(`/api/token/${encodeURIComponent(ca)}`),
+	topGroups: (days = 1, limit = 15) =>
+		getJson<TopGroupsResponse>(`/api/groups/top?days=${days}&limit=${limit}`),
 	deleteToken: async (ca: string) => {
 		const res = await fetch(`/api/token/${encodeURIComponent(ca)}`, { method: 'DELETE' });
 		if (!res.ok) throw new ApiError(`delete ${ca} → ${res.status}`, res.status);

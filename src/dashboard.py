@@ -9,6 +9,7 @@ import logging
 import os
 import sqlite3
 import time
+from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -326,6 +327,54 @@ def api_overview():
         "hourly_today": data["hourly_today"],
         "top_tokens": top,
         "groups": data["groups_week"],
+    })
+
+
+@app.route("/api/groups/top")
+def api_groups_top():
+    """Top-N groups by call activity in the last `days` window.
+
+    Replaces the hardcoded KNOWN_GROUPS chip list on the frontend so dead
+    groups drop out and trending ones surface naturally. Splits the
+    comma-joined `groups_mentioned` field in Python — SQLite has no
+    native split, and the row volume in a 24h window is small.
+    """
+    if not Path(DB_PATH).exists():
+        return jsonify({"groups": [], "ready": False})
+
+    try:
+        limit = max(1, min(50, int(request.args.get("limit", 15))))
+    except ValueError:
+        limit = 15
+    try:
+        days = max(1, min(30, int(request.args.get("days", 1))))
+    except ValueError:
+        days = 1
+
+    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            "SELECT groups_mentioned FROM calls "
+            "WHERE last_seen_at >= ? AND groups_mentioned IS NOT NULL "
+            "AND groups_mentioned != ''",
+            (cutoff,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    counts: Counter[str] = Counter()
+    for r in rows:
+        for g in (r["groups_mentioned"] or "").split(","):
+            g = g.strip()
+            if g:
+                counts[g] += 1
+
+    top = counts.most_common(limit)
+    return jsonify({
+        "ready": True,
+        "groups": [{"name": g, "count": c} for g, c in top],
+        "windowDays": days,
     })
 
 
