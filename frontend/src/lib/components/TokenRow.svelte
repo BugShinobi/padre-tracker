@@ -40,6 +40,13 @@
 		}
 	};
 
+	const FLAG_TITLES: Record<string, string> = {
+		RNK: 'Authority renounced',
+		MNT: 'Mint authority renounced — supply is fixed',
+		FRZ: 'Freeze authority renounced — wallets cannot be frozen',
+		LP: 'LP tokens burned — liquidity is locked'
+	};
+
 	const flags = $derived.by(() => {
 		const f: string[] = [];
 		if (row.renounced) f.push('RNK');
@@ -175,7 +182,7 @@
 	<td class="px-3 py-3">
 		<div class="flex gap-1 flex-wrap">
 			{#each flags as f}
-				<span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-900/40 text-emerald-300">{f}</span>
+				<span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-900/40 text-emerald-300" title={FLAG_TITLES[f]}>{f}</span>
 			{/each}
 		</div>
 	</td>

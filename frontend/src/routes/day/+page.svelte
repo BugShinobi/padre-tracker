@@ -259,7 +259,10 @@
 					>
 						Holders {arrow('holder_count')}
 					</th>
-					<th class="text-left px-3 py-2 font-normal">Flags</th>
+					<th
+						class="text-left px-3 py-2 font-normal cursor-help"
+						title="RNK = authority renounced · MNT = mint renounced (fixed supply) · FRZ = freeze renounced · LP = liquidity burned"
+					>Flags</th>
 					<th class="text-left px-3 py-2 font-normal"></th>
 				</tr>
 			</thead>
