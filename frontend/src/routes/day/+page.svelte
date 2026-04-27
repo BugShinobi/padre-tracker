@@ -8,7 +8,9 @@
 	import FilterBar from '$lib/components/FilterBar.svelte';
 	import FilterChip from '$lib/components/FilterChip.svelte';
 	import McRangeInput from '$lib/components/McRangeInput.svelte';
+	import TableSettings from '$lib/components/TableSettings.svelte';
 	import TokenRow from '$lib/components/TokenRow.svelte';
+	import { tablePrefs, cellPadding } from '$lib/tablePrefs.svelte';
 
 	const KNOWN_LAUNCHPADS = ['pump.fun', 'bags.fm', 'bonk.fun', 'moonshot', 'printr'];
 
@@ -128,6 +130,15 @@
 	const arrow = (field: DaySortField) =>
 		sortField === field ? (sortDir === 'desc' ? '↓' : '↑') : '';
 
+	const cell = $derived(cellPadding(tablePrefs.density));
+	const colspan = $derived(
+		10 +
+			(tablePrefs.cols.description ? 1 : 0) +
+			(tablePrefs.cols.groups ? 1 : 0) +
+			(tablePrefs.cols.holders ? 1 : 0) +
+			(tablePrefs.cols.flags ? 1 : 0)
+	);
+
 	const hasFilters = $derived(
 		search !== '' ||
 			launchpads.length > 0 ||
@@ -229,80 +240,89 @@
 				pageNum = 1;
 			}}
 		/>
+		<TableSettings />
 	</FilterBar>
 
 	<div class="rounded-lg border border-zinc-800 overflow-x-auto mt-4">
 		<table class="w-full text-sm">
 			<thead class="bg-zinc-900/60 text-zinc-400 uppercase text-xs tracking-wider">
 				<tr>
-					<th class="text-left px-3 py-2 font-normal">#</th>
+					<th class="text-left {cell} font-normal">#</th>
 					<th
-						class="text-left px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
+						class="text-left {cell} font-normal cursor-pointer hover:text-zinc-200"
 						onclick={() => toggleSort('ticker')}
 					>
 						Token {arrow('ticker')}
 					</th>
-					<th class="text-left px-3 py-2 font-normal">CA</th>
+					<th class="text-left {cell} font-normal">CA</th>
 					<th
-						class="text-left px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
+						class="text-left {cell} font-normal cursor-pointer hover:text-zinc-200"
 						onclick={() => toggleSort('launchpad')}
 					>
 						LP {arrow('launchpad')}
 					</th>
 					<th
-						class="text-right px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
+						class="text-right {cell} font-normal cursor-pointer hover:text-zinc-200"
 						onclick={() => toggleSort('call_count')}
 					>
 						Calls {arrow('call_count')}
 					</th>
 					<th
-						class="text-right px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
+						class="text-right {cell} font-normal cursor-pointer hover:text-zinc-200"
 						onclick={() => toggleSort('market_cap')}
 					>
 						MC {arrow('market_cap')}
 					</th>
 					<th
-						class="text-right px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
+						class="text-right {cell} font-normal cursor-pointer hover:text-zinc-200"
 						onclick={() => toggleSort('price_change_h24')}
 					>
 						24h {arrow('price_change_h24')}
 					</th>
-					<th class="text-left px-3 py-2 font-normal">Description</th>
-					<th class="text-left px-3 py-2 font-normal">Groups</th>
+					{#if tablePrefs.cols.description}
+						<th class="text-left {cell} font-normal">Description</th>
+					{/if}
+					{#if tablePrefs.cols.groups}
+						<th class="text-left {cell} font-normal">Groups</th>
+					{/if}
 					<th
-						class="text-left px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
+						class="text-left {cell} font-normal cursor-pointer hover:text-zinc-200"
 						onclick={() => toggleSort('first_seen_at')}
 					>
 						First {arrow('first_seen_at')}
 					</th>
 					<th
-						class="text-left px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
+						class="text-left {cell} font-normal cursor-pointer hover:text-zinc-200"
 						onclick={() => toggleSort('last_seen_at')}
 					>
 						Last {arrow('last_seen_at')}
 					</th>
-					<th
-						class="text-right px-3 py-2 font-normal cursor-pointer hover:text-zinc-200"
-						onclick={() => toggleSort('holder_count')}
-					>
-						Holders {arrow('holder_count')}
-					</th>
-					<th
-						class="text-left px-3 py-2 font-normal cursor-help"
-						title="RNK = authority renounced · MNT = mint renounced (fixed supply) · FRZ = freeze renounced · LP = liquidity burned"
-					>Flags</th>
-					<th class="text-left px-3 py-2 font-normal"></th>
+					{#if tablePrefs.cols.holders}
+						<th
+							class="text-right {cell} font-normal cursor-pointer hover:text-zinc-200"
+							onclick={() => toggleSort('holder_count')}
+						>
+							Holders {arrow('holder_count')}
+						</th>
+					{/if}
+					{#if tablePrefs.cols.flags}
+						<th
+							class="text-left {cell} font-normal cursor-help"
+							title="RNK = authority renounced · MNT = mint renounced (fixed supply) · FRZ = freeze renounced · LP = liquidity burned"
+						>Flags</th>
+					{/if}
+					<th class="text-left {cell} font-normal"></th>
 				</tr>
 			</thead>
 			<tbody>
 				{#if dayQuery.isPending}
-					<tr><td colspan="14" class="px-3 py-8 text-center text-zinc-500">Loading…</td></tr>
+					<tr><td colspan={colspan} class="px-3 py-8 text-center text-zinc-500">Loading…</td></tr>
 				{:else if dayQuery.isError}
-					<tr><td colspan="14" class="px-3 py-8 text-center text-rose-400">
+					<tr><td colspan={colspan} class="px-3 py-8 text-center text-rose-400">
 						Error: {dayQuery.error.message}
 					</td></tr>
 				{:else if !dayQuery.data?.ready || dayQuery.data.data.length === 0}
-					<tr><td colspan="14" class="px-3 py-8 text-center text-zinc-500">No calls.</td></tr>
+					<tr><td colspan={colspan} class="px-3 py-8 text-center text-zinc-500">No calls.</td></tr>
 				{:else}
 					{#each dayQuery.data.data as r, i (r.contract_address)}
 						<TokenRow

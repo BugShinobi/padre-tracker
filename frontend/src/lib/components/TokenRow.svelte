@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { fmtMc, fmtPct, fmtNum, fmtAge, fmtDateTime, shortCa } from '$lib/format';
+	import { tablePrefs, cellPadding } from '$lib/tablePrefs.svelte';
 	import type { EnrichedRow } from '$lib/types';
 	import DeleteButton from './DeleteButton.svelte';
 
@@ -12,6 +13,8 @@
 	};
 
 	let { row, index, showDaysActive = false, daysActive, showLast = false }: Props = $props();
+
+	const cell = $derived(cellPadding(tablePrefs.density));
 
 	const changeCls = $derived(
 		row.price_change_h24 == null
@@ -71,9 +74,9 @@
 	tabindex="0"
 	role="link"
 >
-	<td class="px-3 py-3 text-zinc-600 tabular-nums text-xs">{index}</td>
+	<td class="{cell} text-zinc-600 tabular-nums text-xs">{index}</td>
 
-	<td class="px-3 py-3">
+	<td class="{cell}">
 		<div class="flex items-center gap-2.5">
 			{#if row.image_url}
 				<img
@@ -97,7 +100,7 @@
 		</div>
 	</td>
 
-	<td class="px-3 py-3">
+	<td class="{cell}">
 		<div class="flex items-center gap-2 text-xs">
 			<span class="font-mono text-zinc-400">{shortCa(row.contract_address)}</span>
 			<span class="text-zinc-500">{fmtAge(row.creation_timestamp)}</span>
@@ -130,19 +133,19 @@
 		</div>
 	</td>
 
-	<td class="px-3 py-3">
+	<td class="{cell}">
 		<span class="px-2 py-0.5 rounded text-xs {launchpadBadge(row.launchpad)}">
 			{row.launchpad ?? '—'}
 		</span>
 	</td>
 
-	<td class="px-3 py-3 text-right tabular-nums font-medium">{row.call_count}</td>
+	<td class="{cell} text-right tabular-nums font-medium">{row.call_count}</td>
 
 	{#if showDaysActive && daysActive != null}
-		<td class="px-3 py-3 text-right tabular-nums text-zinc-300">{daysActive}</td>
+		<td class="{cell} text-right tabular-nums text-zinc-300">{daysActive}</td>
 	{/if}
 
-	<td class="px-3 py-3 text-right tabular-nums">
+	<td class="{cell} text-right tabular-nums">
 		<div>{fmtMc(row.market_cap)}</div>
 		{#if row.market_cap_ath && (!row.market_cap || row.market_cap_ath > row.market_cap)}
 			<div class="text-[10px] text-zinc-500" title="ATH since tracking">
@@ -151,43 +154,51 @@
 		{/if}
 	</td>
 
-	<td class="px-3 py-3 text-right tabular-nums {changeCls}">{fmtPct(row.price_change_h24)}</td>
+	<td class="{cell} text-right tabular-nums {changeCls}">{fmtPct(row.price_change_h24)}</td>
 
-	<td class="px-3 py-3 max-w-[260px]">
-		{#if row.description}
-			<p class="text-xs text-zinc-400 line-clamp-2" title={row.description}>{row.description}</p>
-		{:else}
-			<span class="text-xs text-zinc-700">—</span>
-		{/if}
-	</td>
+	{#if tablePrefs.cols.description}
+		<td class="{cell} max-w-[260px]">
+			{#if row.description}
+				<p class="text-xs text-zinc-400 line-clamp-2" title={row.description}>{row.description}</p>
+			{:else}
+				<span class="text-xs text-zinc-700">—</span>
+			{/if}
+		</td>
+	{/if}
 
-	<td class="px-3 py-3 text-zinc-300 text-xs max-w-[180px] truncate" title={row.groups_mentioned ?? ''}>
-		{row.groups_mentioned ?? '—'}
-	</td>
+	{#if tablePrefs.cols.groups}
+		<td class="{cell} text-zinc-300 text-xs max-w-[180px] truncate" title={row.groups_mentioned ?? ''}>
+			{row.groups_mentioned ?? '—'}
+		</td>
+	{/if}
 
-	<td class="px-3 py-3 text-zinc-400 tabular-nums text-xs whitespace-nowrap" title={row.first_seen_at}>
+	<td class="{cell} text-zinc-400 tabular-nums text-xs whitespace-nowrap" title={row.first_seen_at}>
 		{fmtDateTime(row.first_seen_at)}
 	</td>
 
 	{#if showLast}
-		<td class="px-3 py-3 text-zinc-400 tabular-nums text-xs whitespace-nowrap" title={row.last_seen_at}>
+		<td class="{cell} text-zinc-400 tabular-nums text-xs whitespace-nowrap" title={row.last_seen_at}>
 			{fmtDateTime(row.last_seen_at)}
 		</td>
 	{/if}
 
-	<td class="px-3 py-3 text-right tabular-nums text-xs text-zinc-400">
-		{row.holder_count ? fmtNum(row.holder_count) : '—'}
-	</td>
+	{#if tablePrefs.cols.holders}
+		<td class="{cell} text-right tabular-nums text-xs text-zinc-400">
+			{row.holder_count ? fmtNum(row.holder_count) : '—'}
+		</td>
+	{/if}
 
-	<td class="px-3 py-3">
-		<div class="flex gap-1 flex-wrap">
-			{#each flags as f}
-				<span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-900/40 text-emerald-300" title={FLAG_TITLES[f]}>{f}</span>
-			{/each}
-		</div>
-	</td>
+	{#if tablePrefs.cols.flags}
+		<td class="{cell}">
+			<div class="flex gap-1 flex-wrap">
+				{#each flags as f}
+					<span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-900/40 text-emerald-300" title={FLAG_TITLES[f]}>{f}</span>
+				{/each}
+			</div>
+		</td>
+	{/if}
 
-	<td class="px-3 py-3" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+	<td class="{cell}" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
 		<DeleteButton ca={row.contract_address} ticker={row.ticker} />
 	</td>
 </tr>
