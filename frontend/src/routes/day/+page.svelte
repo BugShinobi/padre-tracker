@@ -4,6 +4,7 @@
 	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import { api, fmtNum, todayIso } from '$lib/api';
 	import type { DaySortField, SortDir } from '$lib/types';
+	import DatePresets from '$lib/components/DatePresets.svelte';
 	import FilterBar from '$lib/components/FilterBar.svelte';
 	import FilterChip from '$lib/components/FilterChip.svelte';
 	import McRangeInput from '$lib/components/McRangeInput.svelte';
@@ -141,13 +142,14 @@
 	<header class="mb-4 flex items-end justify-between gap-4 flex-wrap">
 		<div>
 			<h1 class="text-3xl font-semibold tracking-tight">Day</h1>
-			<div class="flex items-center gap-3 mt-1">
-				<input
-					id="date"
-					type="date"
-					bind:value={date}
-					oninput={() => (pageNum = 1)}
-					class="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-zinc-500"
+			<div class="flex items-center gap-3 mt-1 flex-wrap">
+				<DatePresets
+					mode="day"
+					{date}
+					onchange={(next) => {
+						if (next.date) date = next.date;
+						pageNum = 1;
+					}}
 				/>
 				<select
 					id="psize"

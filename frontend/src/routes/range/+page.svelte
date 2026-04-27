@@ -4,6 +4,7 @@
 	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import { api, fmtNum, todayIso, daysAgoIso } from '$lib/api';
 	import type { RangeSortField, SortDir } from '$lib/types';
+	import DatePresets from '$lib/components/DatePresets.svelte';
 	import FilterBar from '$lib/components/FilterBar.svelte';
 	import FilterChip from '$lib/components/FilterChip.svelte';
 	import McRangeInput from '$lib/components/McRangeInput.svelte';
@@ -110,12 +111,6 @@
 		pageNum = 1;
 	}
 
-	function setRange(days: number) {
-		dFrom = daysAgoIso(days - 1);
-		dTo = todayIso();
-		pageNum = 1;
-	}
-
 	function toggleLaunchpad(lp: string) {
 		launchpads = launchpads.includes(lp)
 			? launchpads.filter((x) => x !== lp)
@@ -161,33 +156,16 @@
 		<div>
 			<h1 class="text-3xl font-semibold tracking-tight">Range</h1>
 			<div class="flex items-center gap-2 mt-1 flex-wrap">
-				<input
-					id="from"
-					type="date"
-					bind:value={dFrom}
-					oninput={() => (pageNum = 1)}
-					max={dTo}
-					class="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-zinc-500"
+				<DatePresets
+					mode="range"
+					from={dFrom}
+					to={dTo}
+					onchange={(next) => {
+						if (next.from !== undefined) dFrom = next.from;
+						if (next.to !== undefined) dTo = next.to;
+						pageNum = 1;
+					}}
 				/>
-				<span class="text-zinc-500 text-sm">→</span>
-				<input
-					id="to"
-					type="date"
-					bind:value={dTo}
-					oninput={() => (pageNum = 1)}
-					min={dFrom}
-					max={todayIso()}
-					class="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-zinc-500"
-				/>
-				<div class="flex gap-1 ml-1">
-					{#each [7, 14, 30] as days}
-						<button
-							type="button"
-							onclick={() => setRange(days)}
-							class="px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
-						>{days}d</button>
-					{/each}
-				</div>
 				<select
 					id="psize"
 					bind:value={pageSize}
