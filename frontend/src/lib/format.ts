@@ -39,12 +39,43 @@ export function fmtAge(creationTs: number | null | undefined, nowMs: number = Da
 	return `${mins}m`;
 }
 
+// Backend writes naive `datetime.now().isoformat()` on a server set to Etc/UTC.
+// So timestamps are UTC moments without a tz marker — append 'Z' before parsing.
+function parseUtcIso(iso: string): Date | null {
+	if (!iso) return null;
+	const s = iso.includes('T') ? iso : iso.replace(' ', 'T');
+	const withTz = /[Zz]|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + 'Z';
+	const d = new Date(withTz);
+	return isNaN(d.getTime()) ? null : d;
+}
+
+const ROME_TIME = new Intl.DateTimeFormat('en-GB', {
+	timeZone: 'Europe/Rome',
+	hour: '2-digit',
+	minute: '2-digit',
+	hour12: false
+});
+
+const ROME_DATETIME = new Intl.DateTimeFormat('en-GB', {
+	timeZone: 'Europe/Rome',
+	month: '2-digit',
+	day: '2-digit',
+	hour: '2-digit',
+	minute: '2-digit',
+	hour12: false
+});
+
 export function fmtTime(iso: string): string {
-	return iso.length >= 16 ? iso.slice(11, 16) : iso;
+	const d = parseUtcIso(iso);
+	return d ? ROME_TIME.format(d) : iso;
 }
 
 export function fmtDateTime(iso: string): string {
-	return iso.length >= 16 ? `${iso.slice(5, 10)} ${iso.slice(11, 16)}` : iso;
+	const d = parseUtcIso(iso);
+	if (!d) return iso;
+	const parts = ROME_DATETIME.formatToParts(d);
+	const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+	return `${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
 }
 
 export function todayIso(): string {
