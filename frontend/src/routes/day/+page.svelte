@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import { api, fmtNum, todayIso } from '$lib/api';
-	import type { DaySortField, SortDir } from '$lib/types';
+	import type { DaySortField, SortDir, StatusView } from '$lib/types';
 	import FilterBar from '$lib/components/FilterBar.svelte';
 	import FilterChip from '$lib/components/FilterChip.svelte';
 	import TokenRow from '$lib/components/TokenRow.svelte';
@@ -34,6 +34,12 @@
 	let minHolders = $state<number>(
 		params.has('mh') ? Number(params.get('mh')) || 0 : 100
 	);
+	const STATUS_VIEWS: StatusView[] = ['active', 'delisted', 'ignored', 'all'];
+	let statusView = $state<StatusView>(
+		(STATUS_VIEWS as string[]).includes(params.get('st') ?? '')
+			? (params.get('st') as StatusView)
+			: 'active'
+	);
 
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
@@ -56,13 +62,14 @@
 		if (launchpads.length > 0) sp.set('lp', launchpads.join(','));
 		if (groups.length > 0) sp.set('g', groups.join(','));
 		if (minHolders !== 100) sp.set('mh', String(minHolders));
+		if (statusView !== 'active') sp.set('st', statusView);
 		goto(`?${sp}`, { replaceState: true, noScroll: true, keepFocus: true });
 	});
 
 	const dayQuery = createQuery(() => ({
 		queryKey: [
 			'day', date, pageNum, pageSize, search, sortField, sortDir,
-			launchpads.join(','), groups.join(','), minHolders
+			launchpads.join(','), groups.join(','), minHolders, statusView
 		],
 		queryFn: () =>
 			api.day({
@@ -73,7 +80,8 @@
 				sort: `${sortField}:${sortDir}`,
 				launchpad: launchpads.length > 0 ? launchpads : undefined,
 				groups: groups.length > 0 ? groups : undefined,
-				minHolders
+				minHolders,
+				status: statusView
 			}),
 		placeholderData: keepPreviousData,
 		refetchInterval: 60_000
@@ -108,8 +116,14 @@
 		launchpads = [];
 		groups = [];
 		minHolders = 100;
+		statusView = 'active';
 		sortField = 'call_count';
 		sortDir = 'desc';
+		pageNum = 1;
+	}
+
+	function setStatusView(v: StatusView) {
+		statusView = v;
 		pageNum = 1;
 	}
 
@@ -121,9 +135,17 @@
 			launchpads.length > 0 ||
 			groups.length > 0 ||
 			minHolders !== 100 ||
+			statusView !== 'active' ||
 			sortField !== 'call_count' ||
 			sortDir !== 'desc'
 	);
+
+	const STATUS_LABELS: Record<StatusView, string> = {
+		active: 'Active',
+		delisted: 'Delisted',
+		ignored: 'Ignored',
+		all: 'All'
+	};
 </script>
 
 <section>
@@ -201,6 +223,20 @@
 				class="bg-zinc-900/60 border border-zinc-700 rounded px-2 py-1 w-20 tabular-nums focus:outline-none focus:border-zinc-500"
 			/>
 		</label>
+		<div class="flex items-center gap-1.5">
+			<span class="uppercase tracking-wider text-[10px] text-zinc-500 mr-1">Status</span>
+			<div class="flex rounded-md border border-zinc-700 overflow-hidden">
+				{#each STATUS_VIEWS as v}
+					<button
+						type="button"
+						onclick={() => setStatusView(v)}
+						class="px-2.5 py-1 text-xs transition-colors {statusView === v
+							? 'bg-zinc-700 text-zinc-100'
+							: 'bg-zinc-900/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}"
+					>{STATUS_LABELS[v]}</button>
+				{/each}
+			</div>
+		</div>
 	</FilterBar>
 
 	<div class="rounded-lg border border-zinc-800 overflow-x-auto mt-4">
@@ -260,17 +296,18 @@
 						Holders {arrow('holder_count')}
 					</th>
 					<th class="text-left px-3 py-2 font-normal">Flags</th>
+					<th class="text-left px-3 py-2 font-normal">Status</th>
 				</tr>
 			</thead>
 			<tbody>
 				{#if dayQuery.isPending}
-					<tr><td colspan="13" class="px-3 py-8 text-center text-zinc-500">Loading…</td></tr>
+					<tr><td colspan="14" class="px-3 py-8 text-center text-zinc-500">Loading…</td></tr>
 				{:else if dayQuery.isError}
-					<tr><td colspan="13" class="px-3 py-8 text-center text-rose-400">
+					<tr><td colspan="14" class="px-3 py-8 text-center text-rose-400">
 						Error: {dayQuery.error.message}
 					</td></tr>
 				{:else if !dayQuery.data?.ready || dayQuery.data.data.length === 0}
-					<tr><td colspan="13" class="px-3 py-8 text-center text-zinc-500">No calls.</td></tr>
+					<tr><td colspan="14" class="px-3 py-8 text-center text-zinc-500">No calls.</td></tr>
 				{:else}
 					{#each dayQuery.data.data as r, i (r.contract_address)}
 						<TokenRow

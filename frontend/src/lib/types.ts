@@ -46,7 +46,12 @@ export type EnrichedRow = {
 	name: string | null;
 	description: string | null;
 	image_url: string | null;
+
+	status?: TokenStatus;
 };
+
+export type TokenStatus = 'active' | 'delisted' | 'ignored';
+export type StatusView = TokenStatus | 'all';
 
 export type OverviewResponse = {
 	ready: boolean;

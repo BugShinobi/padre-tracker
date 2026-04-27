@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { fmtMc, fmtPct, fmtNum, fmtAge, fmtDateTime, shortCa } from '$lib/format';
 	import type { EnrichedRow } from '$lib/types';
+	import StatusMenu from './StatusMenu.svelte';
 
 	type Props = {
 		row: EnrichedRow;
@@ -177,5 +178,9 @@
 				<span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-900/40 text-emerald-300">{f}</span>
 			{/each}
 		</div>
+	</td>
+
+	<td class="px-3 py-3" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+		<StatusMenu ca={row.contract_address} current={row.status ?? 'active'} />
 	</td>
 </tr>
