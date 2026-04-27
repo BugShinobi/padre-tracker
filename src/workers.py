@@ -183,6 +183,38 @@ def gmgn_scan_once() -> tuple[int, int, int, bool]:
     return len(stale), fetched, errors, breaker_tripped
 
 
+def _scan_metadata_stale(conn: sqlite3.Connection, batch: int) -> list[str]:
+    """Discover CAs needing metadata fetch, including a logo-retry path.
+
+    Standard freshness: missing entirely, or `has_data=1` past FRESH_TTL, or
+    `has_data=0` past DEAD_TTL. Logo-retry: `has_data=1` but `image_url IS NULL`
+    and `image_retries < LOGO_MAX_RETRIES` and `fetched_at` past LOGO_RETRY_TTL —
+    covers transient IPFS/CDN failures so logos don't wait 7 days to repopulate.
+    """
+    now = int(time.time())
+    fresh_cutoff = now - metadata.FRESH_TTL
+    dead_cutoff = now - metadata.DEAD_TTL
+    logo_cutoff = now - metadata.LOGO_RETRY_TTL
+    rows = conn.execute(
+        """
+        SELECT DISTINCT calls.contract_address AS ca
+        FROM calls
+        LEFT JOIN token_metadata t ON calls.contract_address = t.contract_address
+        WHERE t.contract_address IS NULL
+           OR (t.has_data = 1 AND t.fetched_at < ?)
+           OR (t.has_data = 0 AND t.fetched_at < ?)
+           OR (t.has_data = 1
+               AND t.image_url IS NULL
+               AND t.image_retries < ?
+               AND t.fetched_at < ?)
+        ORDER BY calls.first_seen_at DESC
+        LIMIT ?
+        """,
+        (fresh_cutoff, dead_cutoff, metadata.LOGO_MAX_RETRIES, logo_cutoff, batch),
+    ).fetchall()
+    return [r["ca"] for r in rows]
+
+
 def metadata_scan_once() -> tuple[int, int, int]:
     """Run a single metadata scan. Returns (scanned, fetched_with_data, errors)."""
     if not HELIUS_API_KEY:
@@ -191,9 +223,7 @@ def metadata_scan_once() -> tuple[int, int, int]:
 
     conn = _open_conn()
     try:
-        stale = _scan_stale_simple(
-            conn, "token_metadata", metadata.FRESH_TTL, metadata.DEAD_TTL, METADATA_BATCH
-        )
+        stale = _scan_metadata_stale(conn, METADATA_BATCH)
     finally:
         conn.close()
 

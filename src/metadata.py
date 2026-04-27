@@ -29,6 +29,8 @@ HELIUS_RPC_TMPL = "https://mainnet.helius-rpc.com/?api-key={key}"
 HTTP_TIMEOUT = 6
 FRESH_TTL = 7 * 24 * 3600       # metadata rarely changes
 DEAD_TTL  = 30 * 24 * 3600      # no point retrying dead tokens often
+LOGO_RETRY_TTL = 3600           # retry missing logo every 1h (off-chain JSON / IPFS often flake)
+LOGO_MAX_RETRIES = 3            # after ~3h give up and fall back to FRESH_TTL
 RATE_SLEEP = 0.15               # Helius free tier: 10 req/s
 
 _BROWSER_UA = (
@@ -64,6 +66,9 @@ def init_cache(conn: sqlite3.Connection) -> None:
             has_data         INTEGER NOT NULL DEFAULT 1
         )
     """)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(token_metadata)").fetchall()}
+    if "image_retries" not in cols:
+        conn.execute("ALTER TABLE token_metadata ADD COLUMN image_retries INTEGER NOT NULL DEFAULT 0")
     conn.commit()
 
 
@@ -163,24 +168,34 @@ def _fetch_one(api_key: str, ca: str) -> dict | None:
 
 
 def _write_cache(conn: sqlite3.Connection, row: dict | None, ca: str, now: int) -> None:
+    prev = conn.execute(
+        "SELECT image_retries FROM token_metadata WHERE contract_address = ?", (ca,)
+    ).fetchone()
+    prev_retries = prev[0] if prev else 0
+
     if row is None:
         conn.execute(
-            "INSERT OR REPLACE INTO token_metadata (contract_address, fetched_at, has_data) VALUES (?,?,0)",
-            (ca, now),
+            "INSERT OR REPLACE INTO token_metadata (contract_address, fetched_at, has_data, image_retries) VALUES (?,?,0,?)",
+            (ca, now, prev_retries),
         )
         return
+
+    image = row.get("image_url")
+    retries = 0 if image else prev_retries + 1
+
     conn.execute(
         """INSERT OR REPLACE INTO token_metadata
-           (contract_address, name, symbol, description, image_url, json_uri, fetched_at, has_data)
-           VALUES (?,?,?,?,?,?,?,1)""",
+           (contract_address, name, symbol, description, image_url, json_uri, fetched_at, has_data, image_retries)
+           VALUES (?,?,?,?,?,?,?,1,?)""",
         (
             ca,
             row.get("name"),
             row.get("symbol"),
             row.get("description"),
-            row.get("image_url"),
+            image,
             row.get("json_uri"),
             now,
+            retries,
         ),
     )
 
