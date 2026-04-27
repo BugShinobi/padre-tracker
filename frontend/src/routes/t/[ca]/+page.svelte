@@ -26,6 +26,32 @@
 		if (t.burn_status === 'burn') f.push('LP Burn');
 		return f;
 	});
+
+	let copied = $state(false);
+	let copyTimer: ReturnType<typeof setTimeout> | null = null;
+
+	async function copyCa(text: string) {
+		try {
+			if (navigator.clipboard && window.isSecureContext) {
+				await navigator.clipboard.writeText(text);
+			} else {
+				const ta = document.createElement('textarea');
+				ta.value = text;
+				ta.style.position = 'fixed';
+				ta.style.top = '-9999px';
+				ta.style.opacity = '0';
+				document.body.appendChild(ta);
+				ta.select();
+				document.execCommand('copy');
+				document.body.removeChild(ta);
+			}
+			copied = true;
+			if (copyTimer) clearTimeout(copyTimer);
+			copyTimer = setTimeout(() => (copied = false), 1500);
+		} catch (e) {
+			console.error('copy failed', e);
+		}
+	}
 </script>
 
 <section>
@@ -69,9 +95,9 @@
 					<button
 						type="button"
 						class="text-zinc-500 hover:text-zinc-200 transition-colors"
-						onclick={() => navigator.clipboard.writeText(t.contract_address)}
+						onclick={() => copyCa(t.contract_address)}
 						title="Copy CA"
-					>copy</button>
+					>{copied ? 'copied!' : 'copy'}</button>
 					{#if t.creation_timestamp}<span>· age {fmtAge(t.creation_timestamp)}</span>{/if}
 					<span>· first {fmtDateTime(t.first_seen_at)}</span>
 					<span>· last {fmtDateTime(t.last_seen_at)}</span>
@@ -106,7 +132,7 @@
 		</header>
 
 		{#if t.description}
-			<p class="text-sm text-zinc-400 mb-4 max-w-3xl">{t.description}</p>
+			<p class="text-sm text-zinc-400 mb-4 whitespace-pre-line break-words">{t.description}</p>
 		{/if}
 
 		<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
