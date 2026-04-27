@@ -137,20 +137,41 @@ def api_stats():
 def api_stream_calls():
     """SSE feed of newly-inserted calls.
 
-    The dashboard polls the DB once per second for rows with first_seen_at
-    greater than the last value already pushed to this client, then streams
-    them as `event: new`. A heartbeat (`event: ping`) every 15s keeps proxies
-    and EventSource connections alive. The watermark starts at "now" so a
-    fresh client only receives genuinely live tokens, not the day's backlog.
+    On connect, sends a primer batch (last 10 calls) so the page is never blank,
+    then sets the watermark just past those primers and polls the DB every 2s
+    for newer rows, streaming each as `event: new`. A `event: ping` every 15s
+    keeps proxies and EventSource alive.
     """
     if not Path(DB_PATH).exists():
         return Response("db not ready\n", status=503, mimetype="text/plain")
 
     @stream_with_context
     def gen():
-        since = datetime.now().isoformat()
+        # Primer — last 10 calls so the user lands on a populated feed instead
+        # of "0 in feed" until the next scrape lands.
+        conn = _conn()
+        try:
+            primer_rows = conn.execute(
+                """SELECT contract_address, ticker, chain, launchpad, call_count,
+                          first_seen_at, last_seen_at, groups_mentioned
+                   FROM calls
+                   ORDER BY first_seen_at DESC
+                   LIMIT 10"""
+            ).fetchall()
+            primer_rows = [dict(r) for r in primer_rows]
+            if primer_rows:
+                _enrich_rows(conn, primer_rows)
+                since = primer_rows[0]["first_seen_at"]  # newest first row
+            else:
+                since = datetime.now().isoformat()
+        finally:
+            conn.close()
+
         last_ping = time.monotonic()
         yield f"event: ready\ndata: {json.dumps({'since': since})}\n\n"
+        # Send oldest-first so the client (which prepends each event) ends with newest on top.
+        for r in reversed(primer_rows):
+            yield f"event: new\ndata: {json.dumps(r, default=str)}\n\n"
 
         while True:
             conn = _conn()
