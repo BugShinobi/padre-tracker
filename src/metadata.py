@@ -47,10 +47,12 @@ _SPAM_DESC_RE = re.compile(
 _URL_ONLY_RE = re.compile(r"^\s*https?://\S+\s*$")
 
 _IPFS_GATEWAYS = (
-    "https://ipfs.io/ipfs/",
-    "https://cloudflare-ipfs.com/ipfs/",
-    "https://gateway.pinata.cloud/ipfs/",
+    "https://nftstorage.link/ipfs/",
+    "https://4everland.io/ipfs/",
+    "https://dweb.link/ipfs/",
 )
+
+_IPFS_PATH_RE = re.compile(r"/ipfs/([^?#]+)")
 
 
 def init_cache(conn: sqlite3.Connection) -> None:
@@ -84,13 +86,23 @@ def _clean_description(raw) -> str | None:
 
 
 def _http_get_json(url: str, timeout: int = HTTP_TIMEOUT) -> dict | None:
-    """Plain HTTP GET returning parsed JSON, with browser UA. None on any failure."""
-    urls = []
+    """Plain HTTP GET returning parsed JSON, with browser UA. None on any failure.
+
+    For IPFS content (either `ipfs://<cid>` or any `https://<host>/ipfs/<cid>`),
+    rotates through the working gateway list so a dead host doesn't kill the fetch.
+    Public gateways come and go — see memory `reference_ipfs_gateways.md`.
+    """
+    urls: list[str] = []
     if url.startswith("ipfs://"):
         cid = url[len("ipfs://"):]
         urls = [gw + cid for gw in _IPFS_GATEWAYS]
     else:
-        urls = [url]
+        m = _IPFS_PATH_RE.search(url)
+        if m:
+            cid = m.group(1)
+            urls = [gw + cid for gw in _IPFS_GATEWAYS]
+        else:
+            urls = [url]
 
     req_headers = {
         "User-Agent": _BROWSER_UA,
