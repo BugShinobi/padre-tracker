@@ -2,9 +2,7 @@ import type {
 	OverviewResponse,
 	DayResponse,
 	RangeResponse,
-	TokenResponse,
-	TokenStatus,
-	StatusView
+	TokenResponse
 } from './types';
 
 class ApiError extends Error {
@@ -30,7 +28,6 @@ type ListBaseParams = {
 	launchpad?: string[];
 	groups?: string[];
 	minHolders?: number;
-	status?: StatusView;
 };
 
 export type DayParams = ListBaseParams & { d?: string };
@@ -44,7 +41,6 @@ function buildList(q: URLSearchParams, p: ListBaseParams) {
 	if (p.launchpad?.length) q.set('launchpad', p.launchpad.join(','));
 	if (p.groups?.length) q.set('groups', p.groups.join(','));
 	if (p.minHolders && p.minHolders > 0) q.set('min_holders', String(p.minHolders));
-	if (p.status && p.status !== 'active') q.set('status', p.status);
 }
 
 export const api = {
@@ -63,14 +59,10 @@ export const api = {
 		return getJson<RangeResponse>(`/api/range?${q}`);
 	},
 	token: (ca: string) => getJson<TokenResponse>(`/api/token/${encodeURIComponent(ca)}`),
-	setTokenStatus: async (ca: string, status: TokenStatus) => {
-		const res = await fetch(`/api/token/${encodeURIComponent(ca)}/status`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ status })
-		});
-		if (!res.ok) throw new ApiError(`set status ${ca} → ${res.status}`, res.status);
-		return res.json() as Promise<{ ok: boolean; contract_address: string; status: TokenStatus }>;
+	deleteToken: async (ca: string) => {
+		const res = await fetch(`/api/token/${encodeURIComponent(ca)}`, { method: 'DELETE' });
+		if (!res.ok) throw new ApiError(`delete ${ca} → ${res.status}`, res.status);
+		return res.json() as Promise<{ ok: boolean; contract_address: string; deleted_rows: number }>;
 	}
 };
 

@@ -32,25 +32,12 @@ logging.basicConfig(level=getattr(logging, LOG_LEVEL), format="%(asctime)s [%(le
 app = Flask(__name__, static_folder="../frontend/build", static_url_path="")
 log = logging.getLogger("padre-dashboard")
 
-def _init_status_table(conn: sqlite3.Connection) -> None:
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS token_status (
-            contract_address TEXT PRIMARY KEY,
-            status TEXT NOT NULL CHECK(status IN ('active','delisted','ignored')),
-            updated_at INTEGER NOT NULL
-        )
-    """)
-    conn.commit()
-
-
 if Path(DB_PATH).exists():
     _boot = init_db(DB_PATH)
-    _init_status_table(_boot)
+    # Drop the legacy curation table — delisting is now a hard DELETE, no soft state.
+    _boot.execute("DROP TABLE IF EXISTS token_status")
+    _boot.commit()
     _boot.close()
-
-
-VALID_STATUSES = ("active", "delisted", "ignored")
-VALID_STATUS_VIEWS = VALID_STATUSES + ("all",)
 
 
 def _conn() -> sqlite3.Connection:
@@ -252,17 +239,6 @@ def _csv_param(raw: str) -> list[str]:
     return [p.strip() for p in raw.split(",") if p.strip()]
 
 
-def _load_status_map(conn: sqlite3.Connection, cas: list[str]) -> dict[str, str]:
-    if not cas:
-        return {}
-    placeholders = ",".join("?" * len(cas))
-    rows = conn.execute(
-        f"SELECT contract_address, status FROM token_status WHERE contract_address IN ({placeholders})",
-        cas,
-    ).fetchall()
-    return {r["contract_address"]: r["status"] for r in rows}
-
-
 def _enrich_rows(conn: sqlite3.Connection, rows: list[dict]) -> None:
     if not rows:
         return
@@ -270,9 +246,7 @@ def _enrich_rows(conn: sqlite3.Connection, rows: list[dict]) -> None:
     prices = get_prices_cached(conn, cas)
     gmgn_data, _ = get_gmgn_cached(conn, cas)
     meta_data, _ = get_metadata_cached(conn, cas)
-    status_map = _load_status_map(conn, cas)
     for r in rows:
-        r["status"] = status_map.get(r["contract_address"]) or "active"
         p = prices.get(r["contract_address"]) or {}
         r["price_usd"] = _safe_float(p.get("price_usd"))
         r["price_change_h24"] = _safe_float(p.get("price_change_h24"))
@@ -370,10 +344,6 @@ def api_day():
     except ValueError:
         min_holders = 0
 
-    status_view = (request.args.get("status") or "active").strip().lower()
-    if status_view not in VALID_STATUS_VIEWS:
-        status_view = "active"
-
     search = (request.args.get("search") or "").strip()
     launchpads = _csv_param(request.args.get("launchpad"))
     groups = _csv_param(request.args.get("groups"))
@@ -401,19 +371,11 @@ def api_day():
         where.append("(gmgn.holder_count IS NULL OR gmgn.holder_count >= ?)")
         params.append(min_holders)
 
-    if status_view == "active":
-        where.append("(tstatus.status IS NULL OR tstatus.status = 'active')")
-    elif status_view in ("delisted", "ignored"):
-        where.append("tstatus.status = ?")
-        params.append(status_view)
-    # 'all' → no status filter
-
     where_sql = " AND ".join(where)
     join_sql = (
         "FROM calls "
-        "LEFT JOIN token_gmgn    gmgn    ON calls.contract_address = gmgn.contract_address "
-        "LEFT JOIN token_prices  prices  ON calls.contract_address = prices.contract_address "
-        "LEFT JOIN token_status  tstatus ON calls.contract_address = tstatus.contract_address"
+        "LEFT JOIN token_gmgn   gmgn   ON calls.contract_address = gmgn.contract_address "
+        "LEFT JOIN token_prices prices ON calls.contract_address = prices.contract_address"
     )
     conn = _conn()
     try:
@@ -494,10 +456,6 @@ def api_range():
     except ValueError:
         min_holders = 0
 
-    status_view = (request.args.get("status") or "active").strip().lower()
-    if status_view not in VALID_STATUS_VIEWS:
-        status_view = "active"
-
     search = (request.args.get("search") or "").strip()
     launchpads = _csv_param(request.args.get("launchpad"))
     groups = _csv_param(request.args.get("groups"))
@@ -525,18 +483,11 @@ def api_range():
         row_where.append("(gmgn.holder_count IS NULL OR gmgn.holder_count >= ?)")
         params.append(min_holders)
 
-    if status_view == "active":
-        row_where.append("(tstatus.status IS NULL OR tstatus.status = 'active')")
-    elif status_view in ("delisted", "ignored"):
-        row_where.append("tstatus.status = ?")
-        params.append(status_view)
-
     where_sql = " AND ".join(row_where)
     join_sql = (
         "FROM calls "
-        "LEFT JOIN token_gmgn    gmgn    ON calls.contract_address = gmgn.contract_address "
-        "LEFT JOIN token_prices  prices  ON calls.contract_address = prices.contract_address "
-        "LEFT JOIN token_status  tstatus ON calls.contract_address = tstatus.contract_address"
+        "LEFT JOIN token_gmgn   gmgn   ON calls.contract_address = gmgn.contract_address "
+        "LEFT JOIN token_prices prices ON calls.contract_address = prices.contract_address"
     )
 
     conn = _conn()
@@ -606,7 +557,7 @@ def api_range():
     })
 
 
-@app.route("/api/token/<ca>")
+@app.route("/api/token/<ca>", methods=["GET"])
 def api_token(ca: str):
     """Detail view for a single contract address: aggregated metrics across all
     dates seen, enriched with cached price/holder/metadata, plus a per-day call
@@ -664,36 +615,32 @@ def api_token(ca: str):
     })
 
 
-@app.route("/api/token/<ca>/status", methods=["POST"])
-def api_set_token_status(ca: str):
-    """Set the curation status of a token (active|delisted|ignored).
+@app.route("/api/token/<ca>", methods=["DELETE"])
+def api_delete_token(ca: str):
+    """Hard-delete a token from every enrichment table.
 
-    Body: {"status": "delisted"}. Default view filters out non-active so this is
-    how the user moves a token off the dashboard without deleting it. UPSERT
-    semantics — every call wins (no per-row history, that's intentional)."""
+    Irreversible: the token will only reappear if the scraper sees it again on
+    a future call (which then re-creates the row from scratch — past history is
+    gone). Used by the "Delisted" button in the SPA."""
     if not ca or len(ca) > 64 or not all(c.isalnum() or c in "_-" for c in ca):
         return jsonify({"error": "invalid ca"}), 400
 
-    data = request.get_json(silent=True) or {}
-    new_status = (data.get("status") or "").strip().lower()
-    if new_status not in VALID_STATUSES:
-        return jsonify({"error": f"status must be one of {VALID_STATUSES}"}), 400
-
     conn = _conn()
     try:
-        conn.execute(
-            """INSERT INTO token_status (contract_address, status, updated_at)
-               VALUES (?, ?, strftime('%s','now'))
-               ON CONFLICT(contract_address) DO UPDATE SET
-                 status = excluded.status,
-                 updated_at = excluded.updated_at""",
-            (ca, new_status),
-        )
+        deleted = 0
+        for table in ("calls", "token_prices", "token_gmgn", "token_metadata"):
+            try:
+                cur = conn.execute(
+                    f"DELETE FROM {table} WHERE contract_address = ?", (ca,)
+                )
+                deleted += cur.rowcount
+            except sqlite3.OperationalError as e:
+                log.debug("delete skip table=%s err=%s", table, e)
         conn.commit()
     finally:
         conn.close()
 
-    return jsonify({"ok": True, "contract_address": ca, "status": new_status})
+    return jsonify({"ok": True, "contract_address": ca, "deleted_rows": deleted})
 
 
 # --------------------------------------------------------------------- SPA host

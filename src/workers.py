@@ -270,21 +270,18 @@ def prices_scan_once() -> tuple[int, int, int]:
 def _cleanup_low_liquidity(conn: sqlite3.Connection) -> int:
     """Delete tokens whose latest liquidity is below MIN_LIQUIDITY_USD.
 
-    Skips tokens with a user-set status (token_status entry) — those are curated
-    intentionally and should not be auto-purged. Cascades the delete across all
-    enrichment tables so re-discovery starts from a clean slate.
+    Cascades the delete across all enrichment tables so re-discovery starts
+    from a clean slate.
     """
     if MIN_LIQUIDITY_USD <= 0:
         return 0
 
     rows = conn.execute(
-        """SELECT tp.contract_address
-           FROM token_prices tp
-           LEFT JOIN token_status ts ON tp.contract_address = ts.contract_address
-           WHERE tp.has_data = 1
-             AND tp.liquidity_usd IS NOT NULL
-             AND tp.liquidity_usd < ?
-             AND ts.contract_address IS NULL""",
+        """SELECT contract_address
+           FROM token_prices
+           WHERE has_data = 1
+             AND liquidity_usd IS NOT NULL
+             AND liquidity_usd < ?""",
         (MIN_LIQUIDITY_USD,),
     ).fetchall()
     if not rows:
@@ -354,16 +351,6 @@ def _bootstrap_caches() -> None:
         gmgn.init_cache(conn)
         metadata.init_cache(conn)
         enrich.init_cache(conn)
-        # token_status is owned by dashboard.py but we need it readable for the
-        # low-liquidity cleanup join. CREATE IF NOT EXISTS — schema must match.
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS token_status (
-                contract_address TEXT PRIMARY KEY,
-                status TEXT NOT NULL CHECK(status IN ('active','delisted','ignored')),
-                updated_at INTEGER NOT NULL
-            )
-        """)
-        conn.commit()
     finally:
         conn.close()
 

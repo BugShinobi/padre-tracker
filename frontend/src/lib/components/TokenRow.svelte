@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { fmtMc, fmtPct, fmtNum, fmtAge, fmtDateTime, shortCa } from '$lib/format';
 	import type { EnrichedRow } from '$lib/types';
-	import StatusMenu from './StatusMenu.svelte';
+	import DeleteButton from './DeleteButton.svelte';
 
 	type Props = {
 		row: EnrichedRow;
@@ -181,6 +181,6 @@
 	</td>
 
 	<td class="px-3 py-3" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
-		<StatusMenu ca={row.contract_address} current={row.status ?? 'active'} />
+		<DeleteButton ca={row.contract_address} ticker={row.ticker} />
 	</td>
 </tr>

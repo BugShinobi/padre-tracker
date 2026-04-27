@@ -3,7 +3,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { api } from '$lib/api';
 	import { fmtMc, fmtPct, fmtPrice, fmtNum, fmtAge, fmtDateTime, shortCa } from '$lib/format';
-	import StatusMenu from '$lib/components/StatusMenu.svelte';
+	import DeleteButton from '$lib/components/DeleteButton.svelte';
 
 	const ca = $derived(pageStore.params.ca ?? '');
 
@@ -88,7 +88,7 @@
 					{#if t.launchpad}
 						<span class="px-2 py-0.5 rounded text-xs bg-zinc-800 text-zinc-300">{t.launchpad}</span>
 					{/if}
-					<StatusMenu ca={t.contract_address} current={t.status ?? 'active'} size="md" />
+					<DeleteButton ca={t.contract_address} ticker={t.ticker} size="md" redirectTo="/day" />
 				</div>
 				<div class="mt-1.5 flex items-center gap-2 text-xs text-zinc-500 flex-wrap">
 					<span class="font-mono select-all" title={t.contract_address}>{shortCa(t.contract_address)}</span>
