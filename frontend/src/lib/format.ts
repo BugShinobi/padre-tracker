@@ -6,6 +6,15 @@ export function fmtMc(v: number | null | undefined): string {
 	return `$${v.toFixed(0)}`;
 }
 
+// "1m" / "100M" / "1.5b" / "500k" / raw "1000000" → integer USD; empty/junk → 0.
+export function parseMc(s: string): number {
+	const m = s.trim().toUpperCase().match(/^(\d+(?:\.\d+)?)\s*([KMB])?$/);
+	if (!m) return 0;
+	const n = parseFloat(m[1]);
+	const mult = m[2] === 'K' ? 1e3 : m[2] === 'M' ? 1e6 : m[2] === 'B' ? 1e9 : 1;
+	return Math.round(n * mult);
+}
+
 export function fmtPct(v: number | null | undefined): string {
 	if (v == null) return '—';
 	const sign = v >= 0 ? '+' : '';

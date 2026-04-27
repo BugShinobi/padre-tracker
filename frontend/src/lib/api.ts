@@ -28,6 +28,8 @@ type ListBaseParams = {
 	launchpad?: string[];
 	groups?: string[];
 	minHolders?: number;
+	mcMin?: number;
+	mcMax?: number;
 };
 
 export type DayParams = ListBaseParams & { d?: string };
@@ -41,6 +43,8 @@ function buildList(q: URLSearchParams, p: ListBaseParams) {
 	if (p.launchpad?.length) q.set('launchpad', p.launchpad.join(','));
 	if (p.groups?.length) q.set('groups', p.groups.join(','));
 	if (p.minHolders && p.minHolders > 0) q.set('min_holders', String(p.minHolders));
+	if (p.mcMin && p.mcMin > 0) q.set('mc_min', String(p.mcMin));
+	if (p.mcMax && p.mcMax > 0) q.set('mc_max', String(p.mcMax));
 }
 
 export const api = {
@@ -74,6 +78,7 @@ export {
 	shortCa,
 	fmtAge,
 	fmtTime,
+	parseMc,
 	todayIso,
 	daysAgoIso
 } from './format';

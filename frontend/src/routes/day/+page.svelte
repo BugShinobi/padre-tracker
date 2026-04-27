@@ -6,6 +6,7 @@
 	import type { DaySortField, SortDir } from '$lib/types';
 	import FilterBar from '$lib/components/FilterBar.svelte';
 	import FilterChip from '$lib/components/FilterChip.svelte';
+	import McRangeInput from '$lib/components/McRangeInput.svelte';
 	import TokenRow from '$lib/components/TokenRow.svelte';
 
 	const KNOWN_LAUNCHPADS = ['pump.fun', 'bags.fm', 'bonk.fun', 'moonshot', 'printr'];
@@ -34,6 +35,8 @@
 	let minHolders = $state<number>(
 		params.has('mh') ? Number(params.get('mh')) || 0 : 100
 	);
+	let mcMin = $state<number>(Number(params.get('mcmin')) || 0);
+	let mcMax = $state<number>(Number(params.get('mcmax')) || 0);
 
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
@@ -56,13 +59,15 @@
 		if (launchpads.length > 0) sp.set('lp', launchpads.join(','));
 		if (groups.length > 0) sp.set('g', groups.join(','));
 		if (minHolders !== 100) sp.set('mh', String(minHolders));
+		if (mcMin > 0) sp.set('mcmin', String(mcMin));
+		if (mcMax > 0) sp.set('mcmax', String(mcMax));
 		goto(`?${sp}`, { replaceState: true, noScroll: true, keepFocus: true });
 	});
 
 	const dayQuery = createQuery(() => ({
 		queryKey: [
 			'day', date, pageNum, pageSize, search, sortField, sortDir,
-			launchpads.join(','), groups.join(','), minHolders
+			launchpads.join(','), groups.join(','), minHolders, mcMin, mcMax
 		],
 		queryFn: () =>
 			api.day({
@@ -73,7 +78,9 @@
 				sort: `${sortField}:${sortDir}`,
 				launchpad: launchpads.length > 0 ? launchpads : undefined,
 				groups: groups.length > 0 ? groups : undefined,
-				minHolders
+				minHolders,
+				mcMin,
+				mcMax
 			}),
 		placeholderData: keepPreviousData,
 		refetchInterval: 60_000
@@ -108,6 +115,8 @@
 		launchpads = [];
 		groups = [];
 		minHolders = 100;
+		mcMin = 0;
+		mcMax = 0;
 		sortField = 'last_seen_at';
 		sortDir = 'desc';
 		pageNum = 1;
@@ -121,6 +130,8 @@
 			launchpads.length > 0 ||
 			groups.length > 0 ||
 			minHolders !== 100 ||
+			mcMin > 0 ||
+			mcMax > 0 ||
 			sortField !== 'last_seen_at' ||
 			sortDir !== 'desc'
 	);
@@ -201,6 +212,15 @@
 				class="bg-zinc-900/60 border border-zinc-700 rounded px-2 py-1 w-20 tabular-nums focus:outline-none focus:border-zinc-500"
 			/>
 		</label>
+		<McRangeInput
+			min={mcMin}
+			max={mcMax}
+			onchange={(next) => {
+				mcMin = next.min;
+				mcMax = next.max;
+				pageNum = 1;
+			}}
+		/>
 	</FilterBar>
 
 	<div class="rounded-lg border border-zinc-800 overflow-x-auto mt-4">

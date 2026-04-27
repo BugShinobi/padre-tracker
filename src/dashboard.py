@@ -343,6 +343,7 @@ def api_day():
       sort=call_count:desc   (field: call_count|first_seen_at|last_seen_at|ticker|
                               launchpad|market_cap|price_change_h24|holder_count)
       min_holders=N          (filter: keep token if holder_count IS NULL or >= N)
+      mc_min=N, mc_max=N     (filter: keep token if market_cap IS NULL or in range)
     """
     if not Path(DB_PATH).exists():
         return jsonify({"data": [], "rowCount": 0, "pageCount": 0, "ready": False})
@@ -364,6 +365,14 @@ def api_day():
         min_holders = max(0, int(request.args.get("min_holders", 0)))
     except ValueError:
         min_holders = 0
+    try:
+        mc_min = max(0, int(request.args.get("mc_min", 0)))
+    except ValueError:
+        mc_min = 0
+    try:
+        mc_max = max(0, int(request.args.get("mc_max", 0)))
+    except ValueError:
+        mc_max = 0
 
     search = (request.args.get("search") or "").strip()
     launchpads = _csv_param(request.args.get("launchpad"))
@@ -391,6 +400,14 @@ def api_day():
     if min_holders > 0:
         where.append("(gmgn.holder_count IS NULL OR gmgn.holder_count >= ?)")
         params.append(min_holders)
+
+    if mc_min > 0:
+        where.append("(prices.market_cap IS NULL OR prices.market_cap >= ?)")
+        params.append(mc_min)
+
+    if mc_max > 0:
+        where.append("(prices.market_cap IS NULL OR prices.market_cap <= ?)")
+        params.append(mc_max)
 
     where_sql = " AND ".join(where)
     join_sql = (
@@ -447,7 +464,7 @@ def api_range():
 
     Query params:
       from=YYYY-MM-DD, to=YYYY-MM-DD (default: last 7 days)
-      page, page_size, search, launchpad, groups, sort, min_holders
+      page, page_size, search, launchpad, groups, sort, min_holders, mc_min, mc_max
     """
     if not Path(DB_PATH).exists():
         return jsonify({"data": [], "rowCount": 0, "pageCount": 0, "ready": False})
@@ -476,6 +493,14 @@ def api_range():
         min_holders = max(0, int(request.args.get("min_holders", 0)))
     except ValueError:
         min_holders = 0
+    try:
+        mc_min = max(0, int(request.args.get("mc_min", 0)))
+    except ValueError:
+        mc_min = 0
+    try:
+        mc_max = max(0, int(request.args.get("mc_max", 0)))
+    except ValueError:
+        mc_max = 0
 
     search = (request.args.get("search") or "").strip()
     launchpads = _csv_param(request.args.get("launchpad"))
@@ -503,6 +528,14 @@ def api_range():
     if min_holders > 0:
         row_where.append("(gmgn.holder_count IS NULL OR gmgn.holder_count >= ?)")
         params.append(min_holders)
+
+    if mc_min > 0:
+        row_where.append("(prices.market_cap IS NULL OR prices.market_cap >= ?)")
+        params.append(mc_min)
+
+    if mc_max > 0:
+        row_where.append("(prices.market_cap IS NULL OR prices.market_cap <= ?)")
+        params.append(mc_max)
 
     where_sql = " AND ".join(row_where)
     join_sql = (
