@@ -21,6 +21,7 @@ from db import init_db
 from enrich import get_prices_cached
 from gmgn import get_gmgn_cached
 from metadata import get_metadata_cached
+from telegram_db import init_telegram_table
 
 DB_PATH = os.getenv("DB_PATH", "./data/calls.db")
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
@@ -50,6 +51,7 @@ if Path(DB_PATH).exists():
             added_at         TEXT NOT NULL
         )"""
     )
+    init_telegram_table(_boot)
     _boot.commit()
     _boot.close()
 
@@ -949,6 +951,168 @@ def api_delete_token(ca: str):
         conn.close()
 
     return jsonify({"ok": True, "contract_address": ca, "deleted_rows": deleted})
+
+
+# =========================================================== Telegram alerts
+
+@app.route("/api/alerts")
+def api_alerts():
+    """Paginated list of telegram_alerts. TanStack-shaped response.
+
+    Filters: type, min_usd, max_usd, min_mc, max_mc, ticker, actor, source, from, to.
+    Order: msg_date DESC.
+    """
+    if not Path(DB_PATH).exists():
+        return jsonify({
+            "ready": False, "data": [], "rowCount": 0, "pageCount": 0,
+            "page": 1, "pageSize": 100, "filters": {},
+        })
+
+    try:
+        page = max(1, int(request.args.get("page", "1")))
+        page_size = max(1, min(500, int(request.args.get("pageSize", "100"))))
+    except (ValueError, TypeError):
+        page, page_size = 1, 100
+
+    alert_type = (request.args.get("type") or "").strip().lower()
+    ticker = (request.args.get("ticker") or "").strip()
+    actor = (request.args.get("actor") or "").strip()
+    source = (request.args.get("source") or "").strip()
+    date_from = (request.args.get("from") or "").strip()
+    date_to = (request.args.get("to") or "").strip()
+
+    def _f(name: str) -> float | None:
+        try:
+            v = request.args.get(name)
+            return float(v) if v not in (None, "") else None
+        except (ValueError, TypeError):
+            return None
+
+    min_usd = _f("min_usd")
+    max_usd = _f("max_usd")
+    min_mc = _f("min_mc")
+    max_mc = _f("max_mc")
+
+    where = []
+    params: list = []
+    if alert_type and alert_type != "all":
+        where.append("alert_type = ?")
+        params.append(alert_type)
+    if ticker:
+        where.append("target_ticker LIKE ? COLLATE NOCASE")
+        params.append(f"%{ticker}%")
+    if actor:
+        where.append("actor LIKE ? COLLATE NOCASE")
+        params.append(f"%{actor}%")
+    if source:
+        where.append("source_channel = ?")
+        params.append(source)
+    if min_usd is not None:
+        where.append("amount_usd >= ?")
+        params.append(min_usd)
+    if max_usd is not None:
+        where.append("amount_usd <= ?")
+        params.append(max_usd)
+    if min_mc is not None:
+        where.append("market_cap_usd >= ?")
+        params.append(min_mc)
+    if max_mc is not None:
+        where.append("market_cap_usd <= ?")
+        params.append(max_mc)
+    if date_from:
+        where.append("msg_date >= ?")
+        params.append(date_from)
+    if date_to:
+        where.append("msg_date <= ?")
+        params.append(date_to)
+
+    where_sql = "WHERE " + " AND ".join(where) if where else ""
+
+    conn = _conn()
+    try:
+        total = conn.execute(
+            f"SELECT COUNT(*) AS c FROM telegram_alerts {where_sql}", params
+        ).fetchone()["c"]
+
+        offset = (page - 1) * page_size
+        rows = conn.execute(
+            f"""SELECT id, source_channel, msg_id, msg_date, msg_text,
+                       alert_type, actor, target_ticker, amount_usd, market_cap_usd, parse_status
+               FROM telegram_alerts
+               {where_sql}
+               ORDER BY msg_date DESC, id DESC
+               LIMIT ? OFFSET ?""",
+            [*params, page_size, offset],
+        ).fetchall()
+    finally:
+        conn.close()
+
+    page_count = (total + page_size - 1) // page_size if total else 0
+
+    return jsonify({
+        "ready": True,
+        "data": [dict(r) for r in rows],
+        "rowCount": total,
+        "pageCount": page_count,
+        "page": page,
+        "pageSize": page_size,
+        "filters": {
+            "type": alert_type,
+            "ticker": ticker,
+            "actor": actor,
+            "source": source,
+            "min_usd": min_usd,
+            "max_usd": max_usd,
+            "min_mc": min_mc,
+            "max_mc": max_mc,
+            "from": date_from,
+            "to": date_to,
+        },
+    })
+
+
+@app.route("/api/alerts/stats")
+def api_alerts_stats():
+    if not Path(DB_PATH).exists():
+        return jsonify({"alerts_today": 0, "top_actors_7d": [], "top_tickers_7d": []})
+
+    today = date.today().isoformat()
+    week_ago = (date.today() - timedelta(days=6)).isoformat()
+
+    conn = _conn()
+    try:
+        today_count = conn.execute(
+            "SELECT COUNT(*) AS c FROM telegram_alerts WHERE substr(msg_date,1,10) = ?",
+            (today,),
+        ).fetchone()["c"]
+
+        actors = conn.execute(
+            """SELECT actor, COUNT(*) AS hits
+               FROM telegram_alerts
+               WHERE substr(msg_date,1,10) >= ? AND actor IS NOT NULL
+               GROUP BY actor
+               ORDER BY hits DESC
+               LIMIT 10""",
+            (week_ago,),
+        ).fetchall()
+
+        tickers = conn.execute(
+            """SELECT target_ticker, COUNT(*) AS hits
+               FROM telegram_alerts
+               WHERE substr(msg_date,1,10) >= ? AND target_ticker IS NOT NULL
+               GROUP BY target_ticker
+               ORDER BY hits DESC
+               LIMIT 10""",
+            (week_ago,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return jsonify({
+        "alerts_today": today_count,
+        "top_actors_7d": [dict(r) for r in actors],
+        "top_tickers_7d": [dict(r) for r in tickers],
+    })
 
 
 # --------------------------------------------------------------------- SPA host
