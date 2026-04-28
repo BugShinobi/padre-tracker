@@ -3,7 +3,9 @@ import type {
 	DayResponse,
 	RangeResponse,
 	TokenResponse,
-	EnrichedRow
+	EnrichedRow,
+	AlertsResponse,
+	AlertsStatsResponse
 } from './types';
 
 export type TopGroupsResponse = {
@@ -19,6 +21,21 @@ export type TokenNoteResponse = {
 
 export type WatchlistCasResponse = { cas: string[] };
 export type WatchlistResponse = { ready: boolean; data: EnrichedRow[] };
+
+export type AlertsParams = {
+	page?: number;
+	pageSize?: number;
+	type?: string;
+	ticker?: string;
+	actor?: string;
+	source?: string;
+	minUsd?: number;
+	maxUsd?: number;
+	minMc?: number;
+	maxMc?: number;
+	from?: string;
+	to?: string;
+};
 
 class ApiError extends Error {
 	constructor(
@@ -107,7 +124,24 @@ export const api = {
 		const res = await fetch(`/api/watchlist/${encodeURIComponent(ca)}`, { method: 'DELETE' });
 		if (!res.ok) throw new ApiError(`watchlist remove ${ca} → ${res.status}`, res.status);
 		return res.json();
-	}
+	},
+	alerts: (params: AlertsParams = {}) => {
+		const q = new URLSearchParams();
+		if (params.page) q.set('page', String(params.page));
+		if (params.pageSize) q.set('page_size', String(params.pageSize));
+		if (params.type && params.type !== 'all') q.set('type', params.type);
+		if (params.ticker) q.set('ticker', params.ticker);
+		if (params.actor) q.set('actor', params.actor);
+		if (params.source) q.set('source', params.source);
+		if (params.minUsd != null) q.set('min_usd', String(params.minUsd));
+		if (params.maxUsd != null) q.set('max_usd', String(params.maxUsd));
+		if (params.minMc != null) q.set('min_mc', String(params.minMc));
+		if (params.maxMc != null) q.set('max_mc', String(params.maxMc));
+		if (params.from) q.set('from', params.from);
+		if (params.to) q.set('to', params.to);
+		return getJson<AlertsResponse>(`/api/alerts?${q}`);
+	},
+	alertsStats: () => getJson<AlertsStatsResponse>('/api/alerts/stats')
 };
 
 export {

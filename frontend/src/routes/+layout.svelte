@@ -43,6 +43,9 @@
 					<a href="/watchlist" class="hover:text-zinc-100 transition-colors flex items-center gap-1">
 						<span class="text-amber-400">★</span><span>Watch</span>
 					</a>
+					<a href="/alerts" class="hover:text-zinc-100 transition-colors flex items-center gap-1">
+						<span>🐳</span><span>Alerts</span>
+					</a>
 					<a href="/live" class="hover:text-zinc-100 transition-colors flex items-center gap-1.5">
 						<StatusDot connected={live.connected} />
 						<span>Live</span>

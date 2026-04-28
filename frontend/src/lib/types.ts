@@ -115,6 +115,49 @@ export type TokenResponse = {
 	timeline: TokenTimelineEntry[];
 };
 
+export type AlertType = 'whale' | 'kol' | 'kol_newpair';
+
+export type TelegramAlert = {
+	id: number;
+	source_channel: string;
+	msg_id: number;
+	msg_date: string;
+	msg_text: string;
+	alert_type: AlertType | null;
+	actor: string | null;
+	target_ticker: string | null;
+	amount_usd: number | null;
+	market_cap_usd: number | null;
+	parse_status: 'matched' | 'unmatched';
+};
+
+export type AlertsResponse = {
+	ready: boolean;
+	data: TelegramAlert[];
+	rowCount: number;
+	pageCount: number;
+	page: number;
+	pageSize: number;
+	filters: {
+		type: string;
+		ticker: string;
+		actor: string;
+		source: string;
+		min_usd: number | null;
+		max_usd: number | null;
+		min_mc: number | null;
+		max_mc: number | null;
+		from: string;
+		to: string;
+	};
+};
+
+export type AlertsStatsResponse = {
+	alerts_today: number;
+	top_actors_7d: { actor: string; hits: number }[];
+	top_tickers_7d: { target_ticker: string; hits: number }[];
+};
+
 export type RangeResponse = {
 	ready: boolean;
 	data: RangeRow[];

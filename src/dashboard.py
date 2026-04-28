@@ -970,7 +970,7 @@ def api_alerts():
 
     try:
         page = max(1, int(request.args.get("page", "1")))
-        page_size = max(1, min(500, int(request.args.get("pageSize", "100"))))
+        page_size = max(1, min(500, int(request.args.get("page_size", "100"))))
     except (ValueError, TypeError):
         page, page_size = 1, 100
 
