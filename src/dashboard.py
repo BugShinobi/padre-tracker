@@ -779,15 +779,18 @@ def api_token(ca: str):
             if not alerts:
                 return jsonify({"error": "not found"}), 404
 
+            first_alert = dict(alerts[0])
+            token_ca = first_alert.get("target_ca") or ca
+            token_ticker = first_alert.get("target_ticker") or ca.upper()
             token = {
-                "contract_address": ca,
-                "ticker": ca.upper(),
+                "contract_address": token_ca,
+                "ticker": token_ticker,
                 "launchpad": None,
                 "chain": None,
                 "call_count": 0,
                 "days_active": 0,
                 "first_seen_at": None,
-                "last_seen_at": alerts[0]["msg_date"] if alerts else None,
+                "last_seen_at": first_alert.get("msg_date"),
                 "groups_mentioned": None,
                 "price_usd": None,
                 "price_change_h24": None,
@@ -811,8 +814,12 @@ def api_token(ca: str):
                 "creation_timestamp": None,
                 "name": None,
                 "description": None,
-                "image_url": None,
             }
+            rows = [token]
+            if token_ca and len(token_ca) >= 32:
+                _enrich_rows(conn, rows)
+                token = rows[0]
+                token["ticker"] = token.get("ticker") or token_ticker
             return jsonify({
                 "ready": True,
                 "token": token,

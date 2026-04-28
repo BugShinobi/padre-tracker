@@ -224,74 +224,72 @@
 			{/if}
 		</div>
 
-		{#if alerts.length > 0}
-			<div class="rounded-lg border border-zinc-800 overflow-hidden mb-6">
-				<div class="bg-zinc-900/60 px-3 py-2 text-xs uppercase tracking-wider text-zinc-400">
-					Whale / KOL alerts
+		<div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+			<section class="rounded-lg border border-zinc-800 overflow-hidden">
+				<div class="bg-zinc-900/60 px-3 py-2 flex items-center justify-between gap-3">
+					<div class="text-xs uppercase tracking-wider text-zinc-400">Alpha calls</div>
+					<div class="text-xs text-zinc-500 tabular-nums">{fmtNum(t.call_count)} total</div>
 				</div>
-				<table class="w-full text-sm">
-					<thead class="bg-zinc-900/40 text-zinc-500 uppercase text-[10px] tracking-wider">
-						<tr>
-							<th class="text-left px-3 py-1.5 font-normal">Time</th>
-							<th class="text-left px-3 py-1.5 font-normal">Type</th>
-							<th class="text-left px-3 py-1.5 font-normal">Actor</th>
-							<th class="text-right px-3 py-1.5 font-normal">Amount</th>
-							<th class="text-right px-3 py-1.5 font-normal">MC</th>
-							<th class="text-left px-3 py-1.5 font-normal">Message</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each alerts as a (a.id)}
-							<tr class="border-t border-zinc-800/60">
-								<td class="px-3 py-2 text-zinc-400 tabular-nums text-xs whitespace-nowrap">{fmtDateTime(a.msg_date)}</td>
-								<td class="px-3 py-2 text-zinc-300">{a.alert_type ?? '—'}</td>
-								<td class="px-3 py-2 text-zinc-300">{a.actor ?? '—'}</td>
-								<td class="px-3 py-2 text-right tabular-nums text-emerald-300">{fmtMc(a.amount_usd)}</td>
-								<td class="px-3 py-2 text-right tabular-nums text-zinc-400">{fmtMc(a.market_cap_usd)}</td>
-								<td class="px-3 py-2 text-zinc-500 text-xs">
-									{#if a.link_url}
-										<a href={a.link_url} target="_blank" rel="noopener" class="hover:text-zinc-300 transition-colors">
-											{a.msg_text}
-										</a>
-									{:else}
-										{a.msg_text}
-									{/if}
-								</td>
+				{#if timeline.length === 0}
+					<div class="p-6 text-center text-sm text-zinc-500">No Padre calls for this token.</div>
+				{:else}
+					<table class="w-full text-sm">
+						<thead class="bg-zinc-900/40 text-zinc-500 uppercase text-[10px] tracking-wider">
+							<tr>
+								<th class="text-left px-3 py-1.5 font-normal">Date</th>
+								<th class="text-right px-3 py-1.5 font-normal">Calls</th>
+								<th class="text-left px-3 py-1.5 font-normal">First</th>
+								<th class="text-left px-3 py-1.5 font-normal">Last</th>
+								<th class="text-left px-3 py-1.5 font-normal">Groups</th>
 							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-		{/if}
+						</thead>
+						<tbody>
+							{#each timeline as e (e.call_date)}
+								<tr class="border-t border-zinc-800/60">
+									<td class="px-3 py-2 text-zinc-300 tabular-nums">{e.call_date}</td>
+									<td class="px-3 py-2 text-right tabular-nums">{fmtNum(e.call_count)}</td>
+									<td class="px-3 py-2 text-zinc-400 tabular-nums text-xs">{fmtDateTime(e.first_seen_at)}</td>
+									<td class="px-3 py-2 text-zinc-400 tabular-nums text-xs">{fmtDateTime(e.last_seen_at)}</td>
+									<td class="px-3 py-2 text-zinc-400 text-xs">{e.groups_mentioned ?? '—'}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				{/if}
+			</section>
 
-		{#if timeline.length > 0}
-			<div class="rounded-lg border border-zinc-800 overflow-hidden">
-				<div class="bg-zinc-900/60 px-3 py-2 text-xs uppercase tracking-wider text-zinc-400">
-					Daily timeline
+			<section class="rounded-lg border border-zinc-800 overflow-hidden">
+				<div class="bg-zinc-900/60 px-3 py-2 flex items-center justify-between gap-3">
+					<div class="text-xs uppercase tracking-wider text-zinc-400">Whale / KOL alerts</div>
+					<div class="text-xs text-zinc-500 tabular-nums">{fmtNum(alerts.length)} alerts</div>
 				</div>
-				<table class="w-full text-sm">
-					<thead class="bg-zinc-900/40 text-zinc-500 uppercase text-[10px] tracking-wider">
-						<tr>
-							<th class="text-left px-3 py-1.5 font-normal">Date</th>
-							<th class="text-right px-3 py-1.5 font-normal">Calls</th>
-							<th class="text-left px-3 py-1.5 font-normal">First</th>
-							<th class="text-left px-3 py-1.5 font-normal">Last</th>
-							<th class="text-left px-3 py-1.5 font-normal">Groups</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each timeline as e (e.call_date)}
-							<tr class="border-t border-zinc-800/60">
-								<td class="px-3 py-2 text-zinc-300 tabular-nums">{e.call_date}</td>
-								<td class="px-3 py-2 text-right tabular-nums">{fmtNum(e.call_count)}</td>
-								<td class="px-3 py-2 text-zinc-400 tabular-nums text-xs">{fmtDateTime(e.first_seen_at)}</td>
-								<td class="px-3 py-2 text-zinc-400 tabular-nums text-xs">{fmtDateTime(e.last_seen_at)}</td>
-								<td class="px-3 py-2 text-zinc-400 text-xs">{e.groups_mentioned ?? '—'}</td>
+				{#if alerts.length === 0}
+					<div class="p-6 text-center text-sm text-zinc-500">No whale alerts for this token.</div>
+				{:else}
+					<table class="w-full text-sm">
+						<thead class="bg-zinc-900/40 text-zinc-500 uppercase text-[10px] tracking-wider">
+							<tr>
+								<th class="text-left px-3 py-1.5 font-normal">Time</th>
+								<th class="text-left px-3 py-1.5 font-normal">Type</th>
+								<th class="text-left px-3 py-1.5 font-normal">Actor</th>
+								<th class="text-right px-3 py-1.5 font-normal">Amount</th>
+								<th class="text-right px-3 py-1.5 font-normal">MC</th>
 							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-		{/if}
+						</thead>
+						<tbody>
+							{#each alerts as a (a.id)}
+								<tr class="border-t border-zinc-800/60" title={a.msg_text}>
+									<td class="px-3 py-2 text-zinc-400 tabular-nums text-xs whitespace-nowrap">{fmtDateTime(a.msg_date)}</td>
+									<td class="px-3 py-2 text-zinc-300">{a.alert_type ?? '—'}</td>
+									<td class="px-3 py-2 text-zinc-300 truncate max-w-[180px]">{a.actor ?? '—'}</td>
+									<td class="px-3 py-2 text-right tabular-nums text-emerald-300">{fmtMc(a.amount_usd)}</td>
+									<td class="px-3 py-2 text-right tabular-nums text-zinc-400">{fmtMc(a.market_cap_usd)}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				{/if}
+			</section>
+		</div>
 	{/if}
 </section>

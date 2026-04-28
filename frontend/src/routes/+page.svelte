@@ -13,6 +13,12 @@
 	const latest = $derived(overview.data?.latest_calls ?? []);
 	const topToday = $derived(overview.data?.top_tokens_today ?? []);
 	const topWeek = $derived(overview.data?.top_tokens ?? []);
+	const alertSummary = createQuery(() => ({
+		queryKey: ['home-alerts-summary'],
+		queryFn: () => api.alertsSummary({ minUsd: 1000 }),
+		refetchInterval: 60_000
+	}));
+	const whaleMomentum = $derived(alertSummary.data?.data.slice(0, 8) ?? []);
 
 	function changeCls(p: number | null | undefined): string {
 		if (p == null) return 'text-zinc-500';
@@ -85,29 +91,66 @@
 					{fmtNum(d.week_totals?.tokens ?? 0)} · {fmtNum(d.week_totals?.total_calls ?? 0)} this week
 				</p>
 			</div>
-			<div class="flex gap-2 text-xs">
-				<a href="/day" class="px-3 py-1.5 rounded border border-zinc-800 text-zinc-300 hover:bg-zinc-900 transition-colors">Day →</a>
-				<a href="/range" class="px-3 py-1.5 rounded border border-zinc-800 text-zinc-300 hover:bg-zinc-900 transition-colors">Range →</a>
+			<div class="flex gap-2 text-xs flex-wrap">
+				<a href="/day" class="px-3 py-1.5 rounded border border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800 transition-colors">Day</a>
+				<a href="/alerts" class="px-3 py-1.5 rounded border border-zinc-800 text-zinc-300 hover:bg-zinc-900 transition-colors">Alerts</a>
+				<a href="/watchlist" class="px-3 py-1.5 rounded border border-zinc-800 text-zinc-300 hover:bg-zinc-900 transition-colors">Watchlist</a>
+				<a href="/live" class="px-3 py-1.5 rounded border border-zinc-800 text-zinc-300 hover:bg-zinc-900 transition-colors">Live</a>
 			</div>
 		</header>
 
-		<section>
-			<div class="flex items-center justify-between mb-3">
-				<h2 class="text-lg font-semibold tracking-tight">Latest calls</h2>
-				<a href="/day" class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors">See all →</a>
-			</div>
-			{#if latest.length === 0}
-				<div class="rounded-lg border border-zinc-800 p-6 text-center text-sm text-zinc-500">
-					No calls yet.
+		<div class="grid grid-cols-1 xl:grid-cols-[1.35fr_1fr] gap-6">
+			<section>
+				<div class="flex items-center justify-between mb-3">
+					<h2 class="text-lg font-semibold tracking-tight">Latest calls</h2>
+					<a href="/day" class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors">See all →</a>
 				</div>
-			{:else}
-				<div class="rounded-lg border border-zinc-800 overflow-hidden bg-zinc-950/40">
-					{#each latest as row, i (row.contract_address)}
-						{@render tokenLine(row, i + 1)}
-					{/each}
+				{#if latest.length === 0}
+					<div class="rounded-lg border border-zinc-800 p-6 text-center text-sm text-zinc-500">
+						No calls yet.
+					</div>
+				{:else}
+					<div class="rounded-lg border border-zinc-800 overflow-hidden bg-zinc-950/40">
+						{#each latest as row, i (row.contract_address)}
+							{@render tokenLine(row, i + 1)}
+						{/each}
+					</div>
+				{/if}
+			</section>
+
+			<section>
+				<div class="flex items-center justify-between mb-3">
+					<h2 class="text-lg font-semibold tracking-tight">Whale momentum</h2>
+					<a href="/alerts" class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors">See all →</a>
 				</div>
-			{/if}
-		</section>
+				{#if alertSummary.isPending}
+					<div class="rounded-lg border border-zinc-800 p-6 text-center text-sm text-zinc-500">Loading…</div>
+				{:else if whaleMomentum.length === 0}
+					<div class="rounded-lg border border-zinc-800 p-6 text-center text-sm text-zinc-500">No whale alerts yet.</div>
+				{:else}
+					<div class="rounded-lg border border-zinc-800 overflow-hidden bg-zinc-950/40">
+						{#each whaleMomentum as row, i (row.target_ticker)}
+							<a
+								href="/t/{encodeURIComponent(row.target_ca || row.target_ticker)}"
+								class="flex items-center gap-3 px-3 py-2 hover:bg-zinc-900/60 border-t border-zinc-800/60 first:border-t-0 transition-colors"
+							>
+								<span class="text-xs text-zinc-600 tabular-nums w-5 shrink-0 text-right">{i + 1}</span>
+								<div class="min-w-0 flex-1">
+									<div class="font-medium text-zinc-100 truncate">${row.target_ticker}</div>
+									<div class="text-[11px] text-zinc-500 truncate">
+										{fmtNum(row.whale_count)} whales · {fmtNum(row.actor_count)} actors
+									</div>
+								</div>
+								<div class="text-right shrink-0">
+									<div class="text-sm tabular-nums text-emerald-300">{fmtMc(row.total_amount_usd)}</div>
+									<div class="text-[11px] text-zinc-600">added</div>
+								</div>
+							</a>
+						{/each}
+					</div>
+				{/if}
+			</section>
+		</div>
 
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 			<section>
