@@ -167,6 +167,7 @@ export {
 	shortCa,
 	fmtAge,
 	fmtTime,
+	fmtDateTime,
 	parseMc,
 	todayIso,
 	daysAgoIso

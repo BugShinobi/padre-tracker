@@ -18,6 +18,8 @@
 
 	const t = $derived(tokenQuery.data?.token);
 	const timeline = $derived(tokenQuery.data?.timeline ?? []);
+	const alerts = $derived(tokenQuery.data?.alerts ?? []);
+	const hasCa = $derived(Boolean(t?.contract_address && t.contract_address.length >= 32));
 
 	const flags = $derived.by(() => {
 		const f: string[] = [];
@@ -90,22 +92,29 @@
 					{#if t.launchpad}
 						<span class="px-2 py-0.5 rounded text-xs bg-zinc-800 text-zinc-300">{t.launchpad}</span>
 					{/if}
-					<WatchlistButton ca={t.contract_address} size="md" />
-					<DeleteButton ca={t.contract_address} ticker={t.ticker} size="md" redirectTo="/day" />
+					{#if hasCa}
+						<WatchlistButton ca={t.contract_address} size="md" />
+						<DeleteButton ca={t.contract_address} ticker={t.ticker} size="md" redirectTo="/day" />
+					{/if}
 				</div>
 				<div class="mt-1.5 flex items-center gap-2 text-xs text-zinc-500 flex-wrap">
-					<span class="font-mono select-all" title={t.contract_address}>{shortCa(t.contract_address)}</span>
-					<button
-						type="button"
-						class="text-zinc-500 hover:text-zinc-200 transition-colors"
-						onclick={() => copyCa(t.contract_address)}
-						title="Copy CA"
-					>{copied ? 'copied!' : 'copy'}</button>
+					{#if hasCa}
+						<span class="font-mono select-all" title={t.contract_address}>{shortCa(t.contract_address)}</span>
+						<button
+							type="button"
+							class="text-zinc-500 hover:text-zinc-200 transition-colors"
+							onclick={() => copyCa(t.contract_address)}
+							title="Copy CA"
+						>{copied ? 'copied!' : 'copy'}</button>
+					{:else}
+						<span>alert-only ticker</span>
+					{/if}
 					{#if t.creation_timestamp}<span>· age {fmtAge(t.creation_timestamp)}</span>{/if}
-					<span>· first {fmtDateTime(t.first_seen_at)}</span>
-					<span>· last {fmtDateTime(t.last_seen_at)}</span>
+					{#if t.first_seen_at}<span>· first {fmtDateTime(t.first_seen_at)}</span>{/if}
+					{#if t.last_seen_at}<span>· last {fmtDateTime(t.last_seen_at)}</span>{/if}
 				</div>
-				<div class="mt-2 flex gap-2 text-xs flex-wrap">
+				{#if hasCa}
+					<div class="mt-2 flex gap-2 text-xs flex-wrap">
 					<a
 						href="https://dexscreener.com/solana/{t.contract_address}"
 						target="_blank"
@@ -130,7 +139,8 @@
 						rel="noopener"
 						class="px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 hover:border-zinc-700"
 					>Solscan</a>
-				</div>
+					</div>
+				{/if}
 			</div>
 		</header>
 
@@ -202,13 +212,57 @@
 		{/if}
 
 		<div class="rounded-lg border border-zinc-800 overflow-hidden mb-6 bg-zinc-950">
-			<iframe
-				src="https://dexscreener.com/solana/{t.contract_address}?embed=1&theme=dark&trades=0&info=0"
-				title="DexScreener chart"
-				class="w-full"
-				style="height: 540px; border: 0;"
-			></iframe>
+			{#if hasCa}
+				<iframe
+					src="https://dexscreener.com/solana/{t.contract_address}?embed=1&theme=dark&trades=0&info=0"
+					title="DexScreener chart"
+					class="w-full"
+					style="height: 540px; border: 0;"
+				></iframe>
+			{:else}
+				<div class="p-8 text-center text-sm text-zinc-500">No contract address resolved yet.</div>
+			{/if}
 		</div>
+
+		{#if alerts.length > 0}
+			<div class="rounded-lg border border-zinc-800 overflow-hidden mb-6">
+				<div class="bg-zinc-900/60 px-3 py-2 text-xs uppercase tracking-wider text-zinc-400">
+					Whale / KOL alerts
+				</div>
+				<table class="w-full text-sm">
+					<thead class="bg-zinc-900/40 text-zinc-500 uppercase text-[10px] tracking-wider">
+						<tr>
+							<th class="text-left px-3 py-1.5 font-normal">Time</th>
+							<th class="text-left px-3 py-1.5 font-normal">Type</th>
+							<th class="text-left px-3 py-1.5 font-normal">Actor</th>
+							<th class="text-right px-3 py-1.5 font-normal">Amount</th>
+							<th class="text-right px-3 py-1.5 font-normal">MC</th>
+							<th class="text-left px-3 py-1.5 font-normal">Message</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each alerts as a (a.id)}
+							<tr class="border-t border-zinc-800/60">
+								<td class="px-3 py-2 text-zinc-400 tabular-nums text-xs whitespace-nowrap">{fmtDateTime(a.msg_date)}</td>
+								<td class="px-3 py-2 text-zinc-300">{a.alert_type ?? '—'}</td>
+								<td class="px-3 py-2 text-zinc-300">{a.actor ?? '—'}</td>
+								<td class="px-3 py-2 text-right tabular-nums text-emerald-300">{fmtMc(a.amount_usd)}</td>
+								<td class="px-3 py-2 text-right tabular-nums text-zinc-400">{fmtMc(a.market_cap_usd)}</td>
+								<td class="px-3 py-2 text-zinc-500 text-xs">
+									{#if a.link_url}
+										<a href={a.link_url} target="_blank" rel="noopener" class="hover:text-zinc-300 transition-colors">
+											{a.msg_text}
+										</a>
+									{:else}
+										{a.msg_text}
+									{/if}
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{/if}
 
 		{#if timeline.length > 0}
 			<div class="rounded-lg border border-zinc-800 overflow-hidden">

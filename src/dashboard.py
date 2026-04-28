@@ -712,7 +712,9 @@ def api_range():
 def api_token(ca: str):
     """Detail view for a single contract address: aggregated metrics across all
     dates seen, enriched with cached price/holder/metadata, plus a per-day call
-    timeline. Used by /t/[ca] in the SPA."""
+    timeline. Used by /t/[ca] in the SPA. `ca` may also be a ticker; in that
+    case we resolve it to the most recently called matching token, or return an
+    alert-only stub if no Padre call exists yet."""
     if not Path(DB_PATH).exists():
         return jsonify({"ready": False}), 503
 
@@ -721,6 +723,7 @@ def api_token(ca: str):
 
     conn = _conn()
     try:
+        resolved_ca = ca
         agg_row = conn.execute(
             """SELECT contract_address,
                       MAX(ticker)        AS ticker,
@@ -733,10 +736,89 @@ def api_token(ca: str):
                       GROUP_CONCAT(DISTINCT groups_mentioned) AS groups_raw
                FROM calls WHERE contract_address = ?
                GROUP BY contract_address""",
-            (ca,),
+            (resolved_ca,),
         ).fetchone()
+
         if not agg_row:
-            return jsonify({"error": "not found"}), 404
+            resolved = conn.execute(
+                """SELECT contract_address
+                   FROM calls
+                   WHERE ticker = ? COLLATE NOCASE
+                   ORDER BY last_seen_at DESC
+                   LIMIT 1""",
+                (ca,),
+            ).fetchone()
+            if resolved:
+                resolved_ca = resolved["contract_address"]
+                agg_row = conn.execute(
+                    """SELECT contract_address,
+                              MAX(ticker)        AS ticker,
+                              MAX(launchpad)     AS launchpad,
+                              MAX(chain)         AS chain,
+                              SUM(call_count)    AS call_count,
+                              COUNT(*)           AS days_active,
+                              MIN(first_seen_at) AS first_seen_at,
+                              MAX(last_seen_at)  AS last_seen_at,
+                              GROUP_CONCAT(DISTINCT groups_mentioned) AS groups_raw
+                       FROM calls WHERE contract_address = ?
+                       GROUP BY contract_address""",
+                    (resolved_ca,),
+                ).fetchone()
+
+        if not agg_row:
+            alerts = conn.execute(
+                """SELECT id, source_channel, msg_id, msg_date, msg_text,
+                          alert_type, actor, target_ticker, target_ca, link_url,
+                          amount_usd, market_cap_usd, parse_status
+                   FROM telegram_alerts
+                   WHERE target_ca = ? OR target_ticker = ? COLLATE NOCASE
+                   ORDER BY msg_date DESC, id DESC
+                   LIMIT 50""",
+                (ca, ca),
+            ).fetchall()
+            if not alerts:
+                return jsonify({"error": "not found"}), 404
+
+            token = {
+                "contract_address": ca,
+                "ticker": ca.upper(),
+                "launchpad": None,
+                "chain": None,
+                "call_count": 0,
+                "days_active": 0,
+                "first_seen_at": None,
+                "last_seen_at": alerts[0]["msg_date"] if alerts else None,
+                "groups_mentioned": None,
+                "price_usd": None,
+                "price_change_h24": None,
+                "market_cap": None,
+                "market_cap_ath": None,
+                "market_cap_ath_at": None,
+                "price_ath": None,
+                "price_ath_at": None,
+                "liquidity_usd": None,
+                "volume_h24": None,
+                "holder_count": None,
+                "top10_pct": None,
+                "renounced": None,
+                "renounced_mint": None,
+                "renounced_freeze": None,
+                "burn_status": None,
+                "burn_ratio": None,
+                "swaps_5m": None,
+                "swaps_1h": None,
+                "swaps_24h": None,
+                "creation_timestamp": None,
+                "name": None,
+                "description": None,
+                "image_url": None,
+            }
+            return jsonify({
+                "ready": True,
+                "token": token,
+                "timeline": [],
+                "alerts": [dict(a) for a in alerts],
+            })
 
         d = dict(agg_row)
         groups_set: set[str] = set()
@@ -754,7 +836,18 @@ def api_token(ca: str):
                FROM calls WHERE contract_address = ?
                ORDER BY call_date DESC
                LIMIT 30""",
-            (ca,),
+            (resolved_ca,),
+        ).fetchall()
+
+        alerts = conn.execute(
+            """SELECT id, source_channel, msg_id, msg_date, msg_text,
+                      alert_type, actor, target_ticker, target_ca, link_url,
+                      amount_usd, market_cap_usd, parse_status
+               FROM telegram_alerts
+               WHERE target_ca = ? OR target_ticker = ? COLLATE NOCASE
+               ORDER BY msg_date DESC, id DESC
+               LIMIT 50""",
+            (resolved_ca, token.get("ticker") or ca),
         ).fetchall()
     finally:
         conn.close()
@@ -763,6 +856,7 @@ def api_token(ca: str):
         "ready": True,
         "token": token,
         "timeline": [dict(t) for t in timeline],
+        "alerts": [dict(a) for a in alerts],
     })
 
 
@@ -1037,7 +1131,8 @@ def api_alerts():
         offset = (page - 1) * page_size
         rows = conn.execute(
             f"""SELECT id, source_channel, msg_id, msg_date, msg_text,
-                       alert_type, actor, target_ticker, amount_usd, market_cap_usd, parse_status
+                       alert_type, actor, target_ticker, target_ca, link_url,
+                       amount_usd, market_cap_usd, parse_status
                FROM telegram_alerts
                {where_sql}
                ORDER BY msg_date DESC, id DESC
@@ -1187,6 +1282,7 @@ def api_alerts_summary():
     try:
         rows = conn.execute(
             f"""SELECT target_ticker,
+                       MAX(target_ca) AS target_ca,
                        COUNT(*) AS alert_count,
                        COUNT(DISTINCT actor) AS actor_count,
                        SUM(COALESCE(amount_usd, 0)) AS total_amount_usd,

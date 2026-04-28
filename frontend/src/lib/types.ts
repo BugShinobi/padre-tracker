@@ -113,6 +113,7 @@ export type TokenResponse = {
 	ready: boolean;
 	token: TokenDetail;
 	timeline: TokenTimelineEntry[];
+	alerts?: TelegramAlert[];
 };
 
 export type AlertType = 'whale' | 'kol' | 'kol_newpair';
@@ -126,6 +127,8 @@ export type TelegramAlert = {
 	alert_type: AlertType | null;
 	actor: string | null;
 	target_ticker: string | null;
+	target_ca: string | null;
+	link_url: string | null;
 	amount_usd: number | null;
 	market_cap_usd: number | null;
 	parse_status: 'matched' | 'unmatched';
@@ -160,6 +163,7 @@ export type AlertsStatsResponse = {
 
 export type AlertSummaryRow = {
 	target_ticker: string;
+	target_ca: string | null;
 	alert_count: number;
 	actor_count: number;
 	total_amount_usd: number;

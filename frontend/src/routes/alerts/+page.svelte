@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 	import { api } from '$lib/api';
-	import { fmtNum, fmtMc } from '$lib/format';
+	import { fmtNum, fmtMc, fmtDateTime } from '$lib/format';
 	import type { AlertsResponse, AlertType } from '$lib/types';
 
 	const PAGE_SIZE = 100;
@@ -124,15 +124,11 @@
 	}
 
 	function fmtTimeShort(iso: string): string {
-		if (!iso) return '—';
-		const d = new Date(iso);
-		const now = new Date();
-		const sameDay = d.toDateString() === now.toDateString();
-		if (sameDay) {
-			return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-		}
-		return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
-			d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+		return iso ? fmtDateTime(iso) : '—';
+	}
+
+	function tokenHref(ticker: string | null, ca?: string | null): string {
+		return `/t/${encodeURIComponent(ca || ticker || '')}`;
 	}
 
 	function clearFilters() {
@@ -312,7 +308,11 @@
 							<tbody>
 								{#each summaryQuery.data.data as row (row.target_ticker)}
 									<tr class="border-t border-zinc-800/60 hover:bg-zinc-900/40">
-										<td class="px-3 py-2 font-medium text-zinc-100">${row.target_ticker}</td>
+										<td class="px-3 py-2 font-medium text-zinc-100">
+											<a class="hover:text-blue-300 transition-colors" href={tokenHref(row.target_ticker, row.target_ca)}>
+												${row.target_ticker}
+											</a>
+										</td>
 										<td class="px-3 py-2 text-right tabular-nums text-emerald-300">{fmtMc(row.total_amount_usd)}</td>
 										<td class="px-3 py-2 text-right tabular-nums text-zinc-300">{fmtNum(row.alert_count)}</td>
 										<td class="px-3 py-2 text-right tabular-nums text-blue-300">{fmtNum(row.whale_count)}</td>
@@ -362,7 +362,9 @@
 									<td class="px-3 py-2 text-zinc-300 truncate max-w-[200px]">{row.actor ?? '—'}</td>
 									<td class="px-3 py-2 font-medium text-zinc-100">
 										{#if row.target_ticker}
-											<span>${row.target_ticker}</span>
+											<a class="hover:text-blue-300 transition-colors" href={tokenHref(row.target_ticker, row.target_ca)}>
+												${row.target_ticker}
+											</a>
 										{:else}
 											<span class="text-zinc-600">—</span>
 										{/if}

@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import logging
 import os
+import re
 import signal
 import sqlite3
 import sys
@@ -39,6 +40,7 @@ logging.basicConfig(
 log = logging.getLogger("telegram-worker")
 
 _stop = asyncio.Event()
+SOLANA_CA_RE = re.compile(r"/solana/([1-9A-HJ-NP-Za-km-z]{32,44})")
 
 
 def _open_conn() -> sqlite3.Connection:
@@ -57,14 +59,41 @@ def _bootstrap():
         conn.close()
 
 
+def _extract_urls(msg) -> list[str]:
+    urls: list[str] = []
+    for row in getattr(msg, "buttons", None) or []:
+        buttons = row if isinstance(row, list) else [row]
+        for btn in buttons:
+            url = getattr(btn, "url", None)
+            if url:
+                urls.append(url)
+
+    for entity in getattr(msg, "entities", None) or []:
+        url = getattr(entity, "url", None)
+        if url:
+            urls.append(url)
+    return urls
+
+
+def _extract_target_ca(urls: list[str]) -> tuple[str | None, str | None]:
+    for url in urls:
+        m = SOLANA_CA_RE.search(url)
+        if m:
+            return m.group(1), url
+    return None, urls[0] if urls else None
+
+
 def _ingest_message(conn: sqlite3.Connection, msg) -> str:
     text = msg.message or ""
     parsed = telegram_parser.parse(text)
+    target_ca, link_url = _extract_target_ca(_extract_urls(msg))
     alert = {
         "source_channel": SOURCE_CHANNEL,
         "msg_id": msg.id,
         "msg_date": msg.date.isoformat() if msg.date else "",
         "msg_text": text,
+        "target_ca": target_ca,
+        "link_url": link_url,
         **parsed,
     }
     inserted = insert_alert(conn, alert)
