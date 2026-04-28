@@ -44,6 +44,12 @@ if Path(DB_PATH).exists():
             updated_at       TEXT NOT NULL
         )"""
     )
+    _boot.execute(
+        """CREATE TABLE IF NOT EXISTS token_watchlist (
+            contract_address TEXT PRIMARY KEY,
+            added_at         TEXT NOT NULL
+        )"""
+    )
     _boot.commit()
     _boot.close()
 
@@ -725,6 +731,110 @@ def api_token(ca: str):
     })
 
 
+@app.route("/api/watchlist", methods=["GET"])
+def api_watchlist():
+    """Personal watchlist: enriched rows for every CA in token_watchlist, ordered by added_at desc."""
+    if not Path(DB_PATH).exists():
+        return jsonify({"ready": False, "data": []}), 503
+
+    conn = _conn()
+    try:
+        wl_rows = conn.execute(
+            "SELECT contract_address, added_at FROM token_watchlist ORDER BY added_at DESC"
+        ).fetchall()
+        added_at = {r["contract_address"]: r["added_at"] for r in wl_rows}
+        cas = list(added_at.keys())
+        if not cas:
+            return jsonify({"ready": True, "data": []})
+
+        placeholders = ",".join("?" * len(cas))
+        agg_rows = conn.execute(
+            f"""SELECT contract_address,
+                       MAX(ticker)        AS ticker,
+                       MAX(launchpad)     AS launchpad,
+                       MAX(chain)         AS chain,
+                       SUM(call_count)    AS call_count,
+                       MIN(first_seen_at) AS first_seen_at,
+                       MAX(last_seen_at)  AS last_seen_at,
+                       GROUP_CONCAT(DISTINCT groups_mentioned) AS groups_raw
+                FROM calls
+                WHERE contract_address IN ({placeholders})
+                GROUP BY contract_address""",
+            cas,
+        ).fetchall()
+        seen_cas = {r["contract_address"] for r in agg_rows}
+
+        rows = []
+        for r in agg_rows:
+            d = dict(r)
+            groups_set: set[str] = set()
+            for chunk in (d.pop("groups_raw") or "").split(","):
+                g = chunk.strip()
+                if g:
+                    groups_set.add(g)
+            d["groups_mentioned"] = ", ".join(sorted(groups_set)) if groups_set else None
+            d["added_at"] = added_at.get(d["contract_address"])
+            rows.append(d)
+
+        # CAs in watchlist but never called (e.g. just added) — return a stub row.
+        for ca in cas:
+            if ca not in seen_cas:
+                rows.append({
+                    "contract_address": ca,
+                    "ticker": None,
+                    "launchpad": None,
+                    "chain": "Solana",
+                    "call_count": 0,
+                    "first_seen_at": None,
+                    "last_seen_at": None,
+                    "groups_mentioned": None,
+                    "added_at": added_at[ca],
+                })
+
+        _enrich_rows(conn, rows)
+        rows.sort(key=lambda r: r.get("added_at") or "", reverse=True)
+    finally:
+        conn.close()
+
+    return jsonify({"ready": True, "data": rows})
+
+
+@app.route("/api/watchlist/cas", methods=["GET"])
+def api_watchlist_cas():
+    """Lightweight set of CAs currently in the watchlist — used to render star indicators across the UI."""
+    if not Path(DB_PATH).exists():
+        return jsonify({"cas": []})
+    conn = _conn()
+    try:
+        rows = conn.execute("SELECT contract_address FROM token_watchlist").fetchall()
+    finally:
+        conn.close()
+    return jsonify({"cas": [r["contract_address"] for r in rows]})
+
+
+@app.route("/api/watchlist/<ca>", methods=["POST", "DELETE"])
+def api_watchlist_toggle(ca: str):
+    if not ca or len(ca) > 64 or not all(c.isalnum() or c in "_-" for c in ca):
+        return jsonify({"error": "invalid ca"}), 400
+
+    conn = _conn()
+    try:
+        if request.method == "DELETE":
+            conn.execute("DELETE FROM token_watchlist WHERE contract_address = ?", (ca,))
+            conn.commit()
+            return jsonify({"contract_address": ca, "watchlisted": False})
+        now = datetime.now().isoformat()
+        conn.execute(
+            "INSERT OR IGNORE INTO token_watchlist (contract_address, added_at) VALUES (?, ?)",
+            (ca, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"contract_address": ca, "watchlisted": True})
+
+
 @app.route("/api/token/<ca>/note", methods=["GET"])
 def api_token_note_get(ca: str):
     """Personal free-form note for a token. Used by /t/[ca] textarea."""
@@ -793,7 +903,7 @@ def api_delete_token(ca: str):
     conn = _conn()
     try:
         deleted = 0
-        for table in ("calls", "token_prices", "token_gmgn", "token_metadata", "token_notes"):
+        for table in ("calls", "token_prices", "token_gmgn", "token_metadata", "token_notes", "token_watchlist"):
             try:
                 cur = conn.execute(
                     f"DELETE FROM {table} WHERE contract_address = ?", (ca,)

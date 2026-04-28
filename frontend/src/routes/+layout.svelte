@@ -4,6 +4,7 @@
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 	import { onMount } from 'svelte';
 	import { connectSse, disconnectSse, live } from '$lib/sse.svelte';
+	import { watchlist } from '$lib/watchlist.svelte';
 	import LiveTicker from '$lib/components/LiveTicker.svelte';
 	import StatusDot from '$lib/components/StatusDot.svelte';
 
@@ -18,6 +19,7 @@
 
 	onMount(() => {
 		connectSse(queryClient);
+		watchlist.load().catch((e) => console.error('watchlist load failed', e));
 		return () => disconnectSse();
 	});
 
@@ -38,6 +40,9 @@
 					<a href="/" class="hover:text-zinc-100 transition-colors">Home</a>
 					<a href="/day" class="hover:text-zinc-100 transition-colors">Day</a>
 					<a href="/range" class="hover:text-zinc-100 transition-colors">Range</a>
+					<a href="/watchlist" class="hover:text-zinc-100 transition-colors flex items-center gap-1">
+						<span class="text-amber-400">★</span><span>Watch</span>
+					</a>
 					<a href="/live" class="hover:text-zinc-100 transition-colors flex items-center gap-1.5">
 						<StatusDot connected={live.connected} />
 						<span>Live</span>

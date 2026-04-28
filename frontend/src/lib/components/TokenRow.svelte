@@ -3,6 +3,7 @@
 	import { tablePrefs, cellPadding } from '$lib/tablePrefs.svelte';
 	import type { EnrichedRow } from '$lib/types';
 	import DeleteButton from './DeleteButton.svelte';
+	import WatchlistButton from './WatchlistButton.svelte';
 
 	type Props = {
 		row: EnrichedRow;
@@ -199,6 +200,9 @@
 	{/if}
 
 	<td class="{cell}" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
-		<DeleteButton ca={row.contract_address} ticker={row.ticker} />
+		<div class="flex items-center gap-2">
+			<WatchlistButton ca={row.contract_address} />
+			<DeleteButton ca={row.contract_address} ticker={row.ticker} />
+		</div>
 	</td>
 </tr>

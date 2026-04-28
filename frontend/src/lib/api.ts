@@ -2,7 +2,8 @@ import type {
 	OverviewResponse,
 	DayResponse,
 	RangeResponse,
-	TokenResponse
+	TokenResponse,
+	EnrichedRow
 } from './types';
 
 export type TopGroupsResponse = {
@@ -15,6 +16,9 @@ export type TokenNoteResponse = {
 	note: string;
 	updated_at: string | null;
 };
+
+export type WatchlistCasResponse = { cas: string[] };
+export type WatchlistResponse = { ready: boolean; data: EnrichedRow[] };
 
 class ApiError extends Error {
 	constructor(
@@ -91,6 +95,18 @@ export const api = {
 		});
 		if (!res.ok) throw new ApiError(`save note ${ca} → ${res.status}`, res.status);
 		return res.json() as Promise<TokenNoteResponse>;
+	},
+	watchlist: () => getJson<WatchlistResponse>('/api/watchlist'),
+	getWatchlistCas: () => getJson<WatchlistCasResponse>('/api/watchlist/cas'),
+	addToWatchlist: async (ca: string) => {
+		const res = await fetch(`/api/watchlist/${encodeURIComponent(ca)}`, { method: 'POST' });
+		if (!res.ok) throw new ApiError(`watchlist add ${ca} → ${res.status}`, res.status);
+		return res.json();
+	},
+	removeFromWatchlist: async (ca: string) => {
+		const res = await fetch(`/api/watchlist/${encodeURIComponent(ca)}`, { method: 'DELETE' });
+		if (!res.ok) throw new ApiError(`watchlist remove ${ca} → ${res.status}`, res.status);
+		return res.json();
 	}
 };
 
