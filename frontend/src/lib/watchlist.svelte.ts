@@ -1,6 +1,6 @@
 import { api } from './api';
 
-const cas = $state<Set<string>>(new Set());
+let cas = $state<Set<string>>(new Set());
 let loaded = $state(false);
 
 export const watchlist = {
@@ -16,25 +16,28 @@ export const watchlist = {
 	async load() {
 		if (loaded) return;
 		const r = await api.getWatchlistCas();
-		cas.clear();
-		r.cas.forEach((c) => cas.add(c));
+		cas = new Set(r.cas);
 		loaded = true;
 	},
 	async add(ca: string) {
-		cas.add(ca);
+		cas = new Set(cas).add(ca);
 		try {
 			await api.addToWatchlist(ca);
 		} catch (e) {
-			cas.delete(ca);
+			const next = new Set(cas);
+			next.delete(ca);
+			cas = next;
 			throw e;
 		}
 	},
 	async remove(ca: string) {
-		cas.delete(ca);
+		const next = new Set(cas);
+		next.delete(ca);
+		cas = next;
 		try {
 			await api.removeFromWatchlist(ca);
 		} catch (e) {
-			cas.add(ca);
+			cas = new Set(cas).add(ca);
 			throw e;
 		}
 	},
