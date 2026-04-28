@@ -28,9 +28,26 @@ def init_db(db_path: str) -> sqlite3.Connection:
         CREATE UNIQUE INDEX IF NOT EXISTS idx_ca_date
         ON calls (contract_address, call_date)
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS call_events (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_key        TEXT NOT NULL UNIQUE,
+            contract_address TEXT NOT NULL,
+            ticker           TEXT,
+            chain            TEXT DEFAULT 'Solana',
+            launchpad        TEXT,
+            group_name       TEXT,
+            call_bucket      TEXT,
+            row_text         TEXT,
+            observed_at      TEXT NOT NULL,
+            call_date        TEXT NOT NULL
+        )
+    """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_calls_date ON calls(call_date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_calls_first_seen ON calls(first_seen_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_calls_ca ON calls(contract_address)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_call_events_date ON call_events(call_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_call_events_ca_date ON call_events(contract_address, call_date)")
     _migrate_add_launchpad(conn)
     _cleanup_bad_tickers(conn)
     conn.commit()
@@ -91,6 +108,28 @@ def reset_today_counts(conn: sqlite3.Connection) -> int:
     return cur.rowcount
 
 
+def backfill_counts_from_groups(conn: sqlite3.Connection) -> int:
+    """Ensure call_count is at least the number of distinct groups recorded.
+
+    Older scraper logic deduped by CA before counting, so tokens seen in many
+    groups could have call_count=1 with several groups_mentioned. This is a
+    conservative repair: it never lowers counts and cannot recover repeat calls
+    from the same group.
+    """
+    rows = conn.execute(
+        "SELECT id, call_count, groups_mentioned FROM calls WHERE groups_mentioned IS NOT NULL"
+    ).fetchall()
+    updated = 0
+    for r in rows:
+        groups = {g.strip() for g in (r["groups_mentioned"] or "").split(",") if g.strip()}
+        group_count = len(groups)
+        if group_count > (r["call_count"] or 0):
+            conn.execute("UPDATE calls SET call_count = ? WHERE id = ?", (group_count, r["id"]))
+            updated += 1
+    conn.commit()
+    return updated
+
+
 def backfill_launchpad(conn: sqlite3.Connection, detector) -> int:
     """Populate launchpad for existing rows. Returns number of rows updated."""
     rows = conn.execute(
@@ -107,11 +146,12 @@ def backfill_launchpad(conn: sqlite3.Connection, detector) -> int:
 
 
 def record_new_call(conn: sqlite3.Connection, call: dict) -> str:
-    """Record a CA that just appeared on the feed (newly visible this poll).
+    """Record one raw Padre call event and update the daily CA aggregate.
 
     Returns:
-        'NEW'       — first appearance today (INSERT, count=1)
-        'RECALL'    — seen earlier today, left feed, came back (UPDATE count+=1)
+        'NEW'       — first event for this CA today (aggregate INSERT)
+        'RECALL'    — additional event for this CA today (aggregate UPDATE count+=1)
+        'DUP'       — same raw event already recorded
         'SKIP'      — invalid input
     """
     now = datetime.now().isoformat()
@@ -119,6 +159,29 @@ def record_new_call(conn: sqlite3.Connection, call: dict) -> str:
     ca = call.get("contract_address")
     if not ca:
         return "SKIP"
+    event_key = call.get("event_key") or _fallback_event_key(call, call_date)
+
+    cur = conn.execute(
+        """INSERT OR IGNORE INTO call_events
+           (event_key, contract_address, ticker, chain, launchpad, group_name,
+            call_bucket, row_text, observed_at, call_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            event_key,
+            ca,
+            call.get("ticker"),
+            call.get("chain", "Solana"),
+            call.get("launchpad"),
+            call.get("groups_mentioned"),
+            call.get("call_bucket"),
+            call.get("normalized_text") or call.get("_text"),
+            now,
+            call_date,
+        ),
+    )
+    if cur.rowcount == 0:
+        conn.commit()
+        return "DUP"
 
     existing = conn.execute(
         "SELECT id, groups_mentioned FROM calls WHERE contract_address = ? AND call_date = ?",
@@ -146,6 +209,40 @@ def record_new_call(conn: sqlite3.Connection, call: dict) -> str:
     )
     conn.commit()
     return "NEW"
+
+
+def seed_call_event(conn: sqlite3.Connection, call: dict) -> bool:
+    """Record a visible raw event without changing the daily aggregate.
+
+    Used on scraper startup so rows already visible before the process begins
+    don't all get counted again after a restart/deploy.
+    """
+    now = datetime.now().isoformat()
+    call_date = datetime.now().strftime("%Y-%m-%d")
+    ca = call.get("contract_address")
+    if not ca:
+        return False
+    event_key = call.get("event_key") or _fallback_event_key(call, call_date)
+    cur = conn.execute(
+        """INSERT OR IGNORE INTO call_events
+           (event_key, contract_address, ticker, chain, launchpad, group_name,
+            call_bucket, row_text, observed_at, call_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            event_key,
+            ca,
+            call.get("ticker"),
+            call.get("chain", "Solana"),
+            call.get("launchpad"),
+            call.get("groups_mentioned"),
+            call.get("call_bucket"),
+            call.get("normalized_text") or call.get("_text"),
+            now,
+            call_date,
+        ),
+    )
+    conn.commit()
+    return cur.rowcount > 0
 
 
 def touch_seen(conn: sqlite3.Connection, call: dict) -> None:
@@ -183,6 +280,15 @@ def get_today_cas(conn: sqlite3.Connection) -> set[str]:
     return {r["contract_address"] for r in rows}
 
 
+def get_today_call_keys(conn: sqlite3.Connection) -> set[str]:
+    """Set of raw event keys already recorded today."""
+    call_date = datetime.now().strftime("%Y-%m-%d")
+    rows = conn.execute(
+        "SELECT event_key FROM call_events WHERE call_date = ?", (call_date,)
+    ).fetchall()
+    return {r["event_key"] for r in rows}
+
+
 # Legacy alias kept for compatibility; prefer record_new_call / touch_seen.
 def upsert_call(conn: sqlite3.Connection, call: dict) -> bool:
     result = record_new_call(conn, call)
@@ -194,6 +300,13 @@ def _merge_groups(existing: str, new: str) -> str:
     if new.strip() and new.strip() not in parts:
         parts.append(new.strip())
     return ", ".join(parts)
+
+
+def _fallback_event_key(call: dict, call_date: str) -> str:
+    ca = call.get("contract_address") or ""
+    group = (call.get("groups_mentioned") or "").strip()
+    text = (call.get("normalized_text") or call.get("_text") or "").strip()
+    return "|".join([ca, group or "-", call.get("call_bucket") or text or call_date])
 
 
 def get_calls_for_date(conn: sqlite3.Connection, target_date: date | None = None) -> list[dict]:

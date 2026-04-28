@@ -72,7 +72,22 @@ _JS_EXTRACT = """
     }
 
     const results = [];
-    const seen = new Set();
+
+    function extractCallBucket(text) {
+        const now = Date.now();
+        const m = text.match(/\\b(\\d+)\\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)\\s*(?:ago)?\\b/i);
+        if (!m) return null;
+        const n = Number(m[1]);
+        const unit = m[2].toLowerCase();
+        let ms = 0;
+        if (unit.startsWith('s')) ms = n * 1000;
+        else if (unit.startsWith('m')) ms = n * 60 * 1000;
+        else if (unit.startsWith('h')) ms = n * 60 * 60 * 1000;
+        else if (unit.startsWith('d')) ms = n * 24 * 60 * 60 * 1000;
+        if (!ms) return null;
+        const dt = new Date(now - ms);
+        return dt.toISOString().slice(0, 16);
+    }
 
     for (const link of document.querySelectorAll('a[href]')) {
         const href = link.href || '';
@@ -81,8 +96,7 @@ _JS_EXTRACT = """
             const m = href.match(pat);
             if (m) { ca = m[1]; break; }
         }
-        if (!ca || seen.has(ca)) continue;
-        seen.add(ca);
+        if (!ca) continue;
 
         // Walk up DOM to find a container with readable text
         let el = link;
@@ -135,7 +149,19 @@ _JS_EXTRACT = """
         // Drop pure-digit strings or single chars
         if (/^\\d+$/.test(ticker) || ticker.length < 2) ticker = '';
 
-        results.push({ ca, ticker, group, adMarker, _text: text.slice(0, 160) });
+        const callBucket = extractCallBucket(text);
+        const normalizedText = text
+            .replace(/\\b\\d+\\s*(?:s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)\\s*(?:ago)?\\b/gi, '<age>')
+            .replace(/\\s+/g, ' ')
+            .trim()
+            .slice(0, 220);
+        const eventKey = [ca, group || '-', callBucket || normalizedText].join('|');
+
+        results.push({
+            ca, ticker, group, adMarker,
+            eventKey, callBucket, normalizedText,
+            _text: text.slice(0, 160)
+        });
     }
     return results;
 }
@@ -313,6 +339,10 @@ def scrape_alpha_tracker(
             "chain": "Solana",
             "launchpad": launchpad,
             "groups_mentioned": group or None,
+            "event_key": item.get("eventKey"),
+            "call_bucket": item.get("callBucket"),
+            "normalized_text": item.get("normalizedText"),
+            "_text": item.get("_text"),
         })
 
     if not calls and not skipped_lp and not skipped_quality and not skipped_ad:

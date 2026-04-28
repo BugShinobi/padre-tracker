@@ -11,8 +11,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.db import (
-    backfill_launchpad, get_today_cas, init_db, purge_by_launchpad,
-    purge_low_quality, purge_no_group, record_new_call, reset_today_counts, touch_seen,
+    backfill_counts_from_groups, backfill_launchpad, init_db, purge_by_launchpad,
+    purge_low_quality, purge_no_group, record_new_call, seed_call_event, touch_seen,
 )
 from src.export_csv import export_daily_csv
 from src.scraper import (
@@ -45,6 +45,13 @@ logging.basicConfig(
 log = logging.getLogger("padre-tracker")
 
 
+def call_event_key(call: dict) -> str:
+    ca = call.get("contract_address") or ""
+    group = (call.get("groups_mentioned") or "").strip()
+    text = (call.get("normalized_text") or call.get("_text") or "").strip()
+    return call.get("event_key") or "|".join([ca, group or "-", call.get("call_bucket") or text])
+
+
 def setup_dirs():
     for d in [SESSION_DIR, CSV_DIR, "logs"]:
         Path(d).mkdir(parents=True, exist_ok=True)
@@ -71,9 +78,9 @@ def main():
     purged_ng = purge_no_group(conn)
     if purged_ng:
         log.info("Purged %d rows without group (DEX Paid / ad noise)", purged_ng)
-    reset = reset_today_counts(conn)
-    if reset:
-        log.info("Reset call_count=1 on %d today-rows (fixing pre-bug inflated counters)", reset)
+    repaired = backfill_counts_from_groups(conn)
+    if repaired:
+        log.info("Repaired call_count from distinct groups on %d rows", repaired)
 
     pw, context = launch_browser(SESSION_DIR)
     register_page_listeners(context)
@@ -105,12 +112,7 @@ def main():
 
     current_date = date.today()
     new_today = 0
-
-    # Seed in-memory "previously visible" set from today's DB rows so a restart
-    # doesn't re-count CAs that are still on the feed.
-    previously_visible: set[str] = get_today_cas(conn)
-    if previously_visible:
-        log.info("Resuming with %d CAs already recorded today", len(previously_visible))
+    warm_started = False
 
     while running:
         try:
@@ -119,32 +121,45 @@ def main():
                 export_daily_csv(conn, CSV_DIR, current_date)
                 current_date = today
                 new_today = 0
-                previously_visible = set()
+                warm_started = False
 
             calls = scrape_alpha_tracker(
                 page,
                 ignore_launchpads=IGNORE_LAUNCHPADS,
                 require_quality=REQUIRE_QUALITY,
             )
-            current_cas = {c["contract_address"] for c in calls}
-            newly_visible = current_cas - previously_visible
+            processed_keys: set[str] = set()
+            seeded = 0
 
             for call in calls:
                 ca = call["contract_address"]
-                if ca in newly_visible:
-                    result = record_new_call(conn, call)
-                    if result == "NEW":
-                        new_today += 1
-                        log.info(
-                            "NEW    %s  ticker=%s  launchpad=%s  groups=%s",
-                            ca, call.get("ticker"), call.get("launchpad"), call.get("groups_mentioned"),
-                        )
-                    elif result == "RECALL":
-                        log.info("RECALL %s  (re-appeared on feed)", ca)
-                else:
+                key = call_event_key(call)
+                if key in processed_keys:
+                    continue
+                processed_keys.add(key)
+
+                if not warm_started:
+                    if seed_call_event(conn, call):
+                        seeded += 1
+                    touch_seen(conn, call)
+                    continue
+
+                result = record_new_call(conn, call)
+                if result == "NEW":
+                    new_today += 1
+                    log.info(
+                        "NEW    %s  ticker=%s  launchpad=%s  groups=%s",
+                        ca, call.get("ticker"), call.get("launchpad"), call.get("groups_mentioned"),
+                    )
+                elif result == "RECALL":
+                    log.info("RECALL %s  (additional raw call event)", ca)
+                elif result == "DUP":
                     touch_seen(conn, call)
 
-            previously_visible = current_cas
+            if not warm_started:
+                warm_started = True
+                if seeded:
+                    log.info("Warm-start seeded %d visible raw call event(s) without incrementing counts", seeded)
 
             if calls:
                 export_daily_csv(conn, CSV_DIR, current_date)
