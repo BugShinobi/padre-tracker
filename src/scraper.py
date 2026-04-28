@@ -186,6 +186,24 @@ _JS_EXTRACT = """
 }
 """
 
+_JS_SCROLL_ALPHA = """
+(offset) => {
+    const candidates = Array.from(document.querySelectorAll('*')).filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.left < 560 && r.top < 180 && r.height > 250 && el.scrollHeight > el.clientHeight + 40;
+    });
+    candidates.sort((a, b) => {
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return (br.height * br.width) - (ar.height * ar.width);
+    });
+    const panel = candidates[0];
+    if (!panel) return { ok: false };
+    panel.scrollTop = offset;
+    return { ok: true, scrollTop: panel.scrollTop, scrollHeight: panel.scrollHeight, clientHeight: panel.clientHeight };
+}
+"""
+
 
 def launch_browser(session_dir: str) -> tuple:
     Path(session_dir).mkdir(parents=True, exist_ok=True)
@@ -317,7 +335,20 @@ def scrape_alpha_tracker(
         current_url = "<unknown>"
     log.debug("Scraping page at url=%s", current_url)
 
-    raw = page.evaluate(_JS_EXTRACT)
+    raw = []
+    seen_raw = set()
+    for offset in (0, 420, 840, 1260, 1680, 2100):
+        try:
+            page.evaluate(_JS_SCROLL_ALPHA, offset)
+            page.wait_for_timeout(250)
+        except Exception:
+            pass
+        for item in page.evaluate(_JS_EXTRACT):
+            raw_key = item.get("eventKey") or f"{item.get('ca')}|{item.get('_text')}"
+            if raw_key in seen_raw:
+                continue
+            seen_raw.add(raw_key)
+            raw.append(item)
 
     calls = []
     skipped_lp = 0
