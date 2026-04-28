@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from src.db import (
     backfill_counts_from_groups, backfill_launchpad, init_db, purge_by_launchpad,
-    purge_low_quality, purge_no_group, record_new_call, seed_call_event, touch_seen,
+    purge_low_quality, purge_no_group, record_new_call, touch_seen,
 )
 from src.export_csv import export_daily_csv
 from src.scraper import (
@@ -112,7 +112,6 @@ def main():
 
     current_date = date.today()
     new_today = 0
-    warm_started = False
 
     while running:
         try:
@@ -121,7 +120,6 @@ def main():
                 export_daily_csv(conn, CSV_DIR, current_date)
                 current_date = today
                 new_today = 0
-                warm_started = False
 
             calls = scrape_alpha_tracker(
                 page,
@@ -138,12 +136,6 @@ def main():
                     continue
                 processed_keys.add(key)
 
-                if not warm_started:
-                    if seed_call_event(conn, call):
-                        seeded += 1
-                    touch_seen(conn, call)
-                    continue
-
                 result = record_new_call(conn, call)
                 if result == "NEW":
                     new_today += 1
@@ -155,11 +147,6 @@ def main():
                     log.info("RECALL %s  (additional raw call event)", ca)
                 elif result == "DUP":
                     touch_seen(conn, call)
-
-            if not warm_started:
-                warm_started = True
-                if seeded:
-                    log.info("Warm-start seeded %d visible raw call event(s) without incrementing counts", seeded)
 
             if calls:
                 export_daily_csv(conn, CSV_DIR, current_date)
