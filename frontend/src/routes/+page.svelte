@@ -1,12 +1,8 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
-	import { api, fmtMc, fmtPct, shortCa } from '$lib/api';
-	import { live } from '$lib/sse.svelte';
-	import KpiCard from '$lib/components/KpiCard.svelte';
-	import TokenCard from '$lib/components/TokenCard.svelte';
-	import GroupCard from '$lib/components/GroupCard.svelte';
-	import Surface from '$lib/components/Surface.svelte';
-	import Sparkline from '$lib/components/Sparkline.svelte';
+	import { api } from '$lib/api';
+	import { fmtMc, fmtPct, fmtNum, fmtDateTime, shortCa } from '$lib/format';
+	import type { EnrichedRow } from '$lib/types';
 
 	const overview = createQuery(() => ({
 		queryKey: ['overview'],
@@ -14,31 +10,61 @@
 		refetchInterval: 60_000
 	}));
 
-	const week = $derived(overview.data?.week ?? []);
-	const tokensSpark = $derived(week.map((w) => w.tokens));
-	const callsSpark = $derived(week.map((w) => w.total_calls));
+	const latest = $derived(overview.data?.latest_calls ?? []);
+	const topToday = $derived(overview.data?.top_tokens_today ?? []);
+	const topWeek = $derived(overview.data?.top_tokens ?? []);
 
-	const avgCallsPerToken = $derived.by(() => {
-		const t = overview.data?.today?.tokens ?? 0;
-		const c = overview.data?.today?.total_calls ?? 0;
-		return t > 0 ? Math.round(c / t) : 0;
-	});
-
-	const groupsCount = $derived((overview.data?.groups ?? []).length);
-
-	const topMovers = $derived.by(() => {
-		const tokens = overview.data?.top_tokens ?? [];
-		return [...tokens]
-			.filter((t) => t.price_change_h24 != null)
-			.sort((a, b) => (b.price_change_h24 ?? 0) - (a.price_change_h24 ?? 0))
-			.slice(0, 5);
-	});
-
-	const maxGroupTokens = $derived.by(() => {
-		const groups = overview.data?.groups ?? [];
-		return groups.reduce((m, g) => Math.max(m, g.tokens), 0);
-	});
+	function changeCls(p: number | null | undefined): string {
+		if (p == null) return 'text-zinc-500';
+		return p >= 0 ? 'text-emerald-400' : 'text-rose-400';
+	}
 </script>
+
+{#snippet tokenLine(row: EnrichedRow, idx: number)}
+	<a
+		href="/t/{row.contract_address}"
+		class="flex items-center gap-3 px-3 py-2 hover:bg-zinc-900/60 border-t border-zinc-800/60 first:border-t-0 transition-colors"
+	>
+		<span class="text-xs text-zinc-600 tabular-nums w-5 shrink-0 text-right">{idx}</span>
+		{#if row.image_url}
+			<img
+				src={row.image_url}
+				alt=""
+				class="w-7 h-7 rounded-full object-cover bg-zinc-800 shrink-0"
+				loading="lazy"
+				referrerpolicy="no-referrer"
+			/>
+		{:else}
+			<div class="w-7 h-7 rounded-full bg-zinc-800 shrink-0"></div>
+		{/if}
+		<div class="min-w-0 flex-1">
+			<div class="flex items-center gap-2">
+				<span class="font-medium text-zinc-100 truncate {row.ticker ? '' : 'italic text-zinc-500'}">
+					{row.ticker ?? shortCa(row.contract_address)}
+				</span>
+				{#if row.launchpad}
+					<span class="text-[10px] text-zinc-500 shrink-0">{row.launchpad.split('.')[0]}</span>
+				{/if}
+			</div>
+			{#if row.groups_mentioned}
+				<div class="text-[11px] text-zinc-500 truncate">{row.groups_mentioned}</div>
+			{/if}
+		</div>
+		<div class="text-right shrink-0">
+			<div class="text-sm tabular-nums text-zinc-300">{fmtMc(row.market_cap)}</div>
+			<div class="text-[11px] tabular-nums {changeCls(row.price_change_h24)}">
+				{fmtPct(row.price_change_h24)}
+			</div>
+		</div>
+		<div class="text-right shrink-0 hidden sm:block">
+			<div class="text-sm tabular-nums text-zinc-400">{fmtNum(row.call_count)}</div>
+			<div class="text-[11px] text-zinc-600">calls</div>
+		</div>
+		<div class="text-[11px] text-zinc-500 tabular-nums shrink-0 hidden md:block w-24 text-right">
+			{fmtDateTime(row.last_seen_at)}
+		</div>
+	</a>
+{/snippet}
 
 <section class="space-y-8">
 	{#if overview.isPending}
@@ -50,150 +76,81 @@
 	{:else}
 		{@const d = overview.data}
 
-		<header class="flex items-end justify-between gap-4">
+		<header class="flex items-end justify-between gap-4 flex-wrap">
 			<div>
-				<h1 class="text-3xl font-semibold tracking-tight">Today</h1>
-				<p class="text-sm text-zinc-500">{d.date}</p>
+				<h1 class="text-3xl font-semibold tracking-tight">padre-tracker</h1>
+				<p class="text-sm text-zinc-500 mt-0.5">
+					{fmtNum(d.today?.tokens ?? 0)} tokens · {fmtNum(d.today?.total_calls ?? 0)} calls today
+					<span class="text-zinc-600">·</span>
+					{fmtNum(d.week_totals?.tokens ?? 0)} · {fmtNum(d.week_totals?.total_calls ?? 0)} this week
+				</p>
 			</div>
-			<div class="text-xs text-zinc-500 text-right">
-				<div>Week total</div>
-				<div class="text-zinc-300 text-sm tabular-nums font-medium">
-					{(d.week_totals?.tokens ?? 0).toLocaleString('en-US')} tokens · {(
-						d.week_totals?.total_calls ?? 0
-					).toLocaleString('en-US')} calls
-				</div>
+			<div class="flex gap-2 text-xs">
+				<a href="/day" class="px-3 py-1.5 rounded border border-zinc-800 text-zinc-300 hover:bg-zinc-900 transition-colors">Day →</a>
+				<a href="/range" class="px-3 py-1.5 rounded border border-zinc-800 text-zinc-300 hover:bg-zinc-900 transition-colors">Range →</a>
 			</div>
 		</header>
 
-		<div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-			<KpiCard
-				label="Tokens today"
-				value={d.today?.tokens ?? 0}
-				delta={d.delta?.tokens}
-				spark={tokensSpark}
-				variant="gradient-pos"
-				sparkStroke="rgb(52 211 153)"
-				sparkFill="rgb(52 211 153 / 0.15)"
-			/>
-			<KpiCard
-				label="Calls today"
-				value={d.today?.total_calls ?? 0}
-				delta={d.delta?.calls}
-				spark={callsSpark}
-				variant="gradient-cool"
-				sparkStroke="rgb(96 165 250)"
-				sparkFill="rgb(96 165 250 / 0.15)"
-			/>
-			<KpiCard label="Active groups" value={groupsCount} variant="card" />
-			<KpiCard label="Avg calls/token" value={avgCallsPerToken} variant="card" />
-		</div>
-
 		<section>
 			<div class="flex items-center justify-between mb-3">
-				<h2 class="text-lg font-semibold tracking-tight">Live activity</h2>
-				<a
-					href="/live"
-					class="text-sm text-zinc-400 hover:text-zinc-200 flex items-center gap-1 transition-colors"
-				>
-					See all <span aria-hidden="true">→</span>
-				</a>
+				<h2 class="text-lg font-semibold tracking-tight">Latest calls</h2>
+				<a href="/day" class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors">See all →</a>
 			</div>
-			{#if live.items.length === 0}
-				<Surface variant="card" padding="lg">
-					<p class="text-sm text-zinc-500">Watching for new tokens…</p>
-				</Surface>
+			{#if latest.length === 0}
+				<div class="rounded-lg border border-zinc-800 p-6 text-center text-sm text-zinc-500">
+					No calls yet.
+				</div>
 			{:else}
-				<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-					{#each live.items.slice(0, 4) as row (row.contract_address)}
-						<TokenCard {row} />
+				<div class="rounded-lg border border-zinc-800 overflow-hidden bg-zinc-950/40">
+					{#each latest as row, i (row.contract_address)}
+						{@render tokenLine(row, i + 1)}
 					{/each}
 				</div>
 			{/if}
 		</section>
 
-		{#if topMovers.length > 0}
+		<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 			<section>
-				<h2 class="text-lg font-semibold tracking-tight mb-3">Top movers · 24h</h2>
-				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
-					{#each topMovers as row (row.contract_address)}
-						<a href="/t/{row.contract_address}" class="block">
-							<Surface variant="card" hover padding="md">
-								<div class="flex items-center gap-2 mb-2">
-									{#if row.image_url}
-										<img
-											src={row.image_url}
-											alt=""
-											class="w-7 h-7 rounded-full bg-zinc-800 shrink-0"
-											loading="lazy"
-											referrerpolicy="no-referrer"
-										/>
-									{:else}
-										<div class="w-7 h-7 rounded-full bg-zinc-800 shrink-0"></div>
-									{/if}
-									<span class="font-semibold truncate">
-										{row.ticker ?? shortCa(row.contract_address)}
-									</span>
-								</div>
-								<div class="text-2xl font-semibold tabular-nums {(row.price_change_h24 ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
-									{fmtPct(row.price_change_h24)}
-								</div>
-								<div class="text-xs text-zinc-500 tabular-nums">{fmtMc(row.market_cap)}</div>
-							</Surface>
-						</a>
-					{/each}
+				<div class="flex items-center justify-between mb-3">
+					<h2 class="text-lg font-semibold tracking-tight">Most called · today</h2>
+					<a
+						href="/day?sortField=call_count&sortDir=desc"
+						class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+					>See all →</a>
 				</div>
+				{#if topToday.length === 0}
+					<div class="rounded-lg border border-zinc-800 p-6 text-center text-sm text-zinc-500">
+						No calls today yet.
+					</div>
+				{:else}
+					<div class="rounded-lg border border-zinc-800 overflow-hidden bg-zinc-950/40">
+						{#each topToday as row, i (row.contract_address)}
+							{@render tokenLine(row, i + 1)}
+						{/each}
+					</div>
+				{/if}
 			</section>
-		{/if}
 
-		<section class="grid grid-cols-1 lg:grid-cols-3 gap-3">
-			<Surface variant="card" padding="lg" class="lg:col-span-2">
-				<div class="flex items-center justify-between mb-2">
-					<div class="text-xs uppercase tracking-wider text-zinc-500 font-medium">Tokens · 7d</div>
-					<div class="text-xs text-zinc-400 tabular-nums">
-						{(d.week_totals?.tokens ?? 0).toLocaleString('en-US')}
-					</div>
+			<section>
+				<div class="flex items-center justify-between mb-3">
+					<h2 class="text-lg font-semibold tracking-tight">Most called · 7d</h2>
+					<a
+						href="/range?sortField=call_count&sortDir=desc"
+						class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+					>See all →</a>
 				</div>
-				<Sparkline
-					data={tokensSpark}
-					stroke="rgb(52 211 153)"
-					fill="rgb(52 211 153 / 0.18)"
-					height={80}
-					strokeWidth={2}
-				/>
-			</Surface>
-			<Surface variant="card" padding="lg">
-				<div class="flex items-center justify-between mb-2">
-					<div class="text-xs uppercase tracking-wider text-zinc-500 font-medium">Calls · 7d</div>
-					<div class="text-xs text-zinc-400 tabular-nums">
-						{(d.week_totals?.total_calls ?? 0).toLocaleString('en-US')}
+				{#if topWeek.length === 0}
+					<div class="rounded-lg border border-zinc-800 p-6 text-center text-sm text-zinc-500">
+						No calls in the last 7 days.
 					</div>
-				</div>
-				<Sparkline
-					data={callsSpark}
-					stroke="rgb(96 165 250)"
-					fill="rgb(96 165 250 / 0.18)"
-					height={80}
-					strokeWidth={2}
-				/>
-			</Surface>
-		</section>
-
-		<section>
-			<h2 class="text-lg font-semibold tracking-tight mb-3">Top tokens · week</h2>
-			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-				{#each (d.top_tokens ?? []).slice(0, 10) as row (row.contract_address)}
-					<TokenCard {row} variant="expanded" />
-				{/each}
-			</div>
-		</section>
-
-		<section>
-			<h2 class="text-lg font-semibold tracking-tight mb-3">Top groups · week</h2>
-			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-				{#each (d.groups ?? []).slice(0, 10) as group, i (group.name ?? group.group ?? i)}
-					<GroupCard {group} rank={i + 1} maxTokens={maxGroupTokens} />
-				{/each}
-			</div>
-		</section>
+				{:else}
+					<div class="rounded-lg border border-zinc-800 overflow-hidden bg-zinc-950/40">
+						{#each topWeek as row, i (row.contract_address)}
+							{@render tokenLine(row, i + 1)}
+						{/each}
+					</div>
+				{/if}
+			</section>
+		</div>
 	{/if}
 </section>

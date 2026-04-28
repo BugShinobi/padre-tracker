@@ -319,10 +319,42 @@ def api_overview():
     t_delta = _delta(data["today"]["tokens"], data["yesterday"]["tokens"])
     c_delta = _delta(data["today"]["total_calls"], data["yesterday"]["total_calls"])
 
+    week_ago = (date.today() - timedelta(days=6)).isoformat()
     conn = _conn()
     try:
-        top = [dict(t) for t in data["top_tokens_week"]]
-        _enrich_rows(conn, top)
+        top_week = [dict(t) for t in data["top_tokens_week"]]
+        top_today = [dict(t) for t in data["top_tokens_today"]]
+
+        latest_rows = conn.execute(
+            """SELECT contract_address,
+                      MAX(ticker)        AS ticker,
+                      MAX(launchpad)     AS launchpad,
+                      MAX(chain)         AS chain,
+                      SUM(call_count)    AS call_count,
+                      MIN(first_seen_at) AS first_seen_at,
+                      MAX(last_seen_at)  AS last_seen_at,
+                      GROUP_CONCAT(DISTINCT groups_mentioned) AS groups_raw
+               FROM calls
+               WHERE call_date >= ?
+               GROUP BY contract_address
+               ORDER BY MAX(last_seen_at) DESC
+               LIMIT 20""",
+            (week_ago,),
+        ).fetchall()
+        latest = []
+        for r in latest_rows:
+            d = dict(r)
+            groups_set: set[str] = set()
+            for chunk in (d.pop("groups_raw") or "").split(","):
+                g = chunk.strip()
+                if g:
+                    groups_set.add(g)
+            d["groups_mentioned"] = ", ".join(sorted(groups_set)) if groups_set else None
+            latest.append(d)
+
+        _enrich_rows(conn, top_week)
+        _enrich_rows(conn, top_today)
+        _enrich_rows(conn, latest)
     finally:
         conn.close()
 
@@ -337,8 +369,9 @@ def api_overview():
         },
         "week": data["week"],
         "week_totals": data["week_totals"],
-        "hourly_today": data["hourly_today"],
-        "top_tokens": top,
+        "top_tokens": top_week,
+        "top_tokens_today": top_today,
+        "latest_calls": latest,
         "groups": data["groups_week"],
     })
 

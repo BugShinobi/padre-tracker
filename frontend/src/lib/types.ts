@@ -8,8 +8,6 @@ export type WeekTotals = { tokens: number; total_calls: number };
 
 export type GroupRow = { name?: string; group?: string; tokens: number; calls: number };
 
-export type HourlyBucket = { hour: number; total_calls: number; tokens: number };
-
 export type EnrichedRow = {
 	contract_address: string;
 	ticker: string | null;
@@ -56,8 +54,9 @@ export type OverviewResponse = {
 	delta?: { tokens: Delta; calls: Delta };
 	week?: WeekDay[];
 	week_totals?: WeekTotals;
-	hourly_today?: HourlyBucket[];
 	top_tokens?: EnrichedRow[];
+	top_tokens_today?: EnrichedRow[];
+	latest_calls?: EnrichedRow[];
 	groups?: GroupRow[];
 };
 

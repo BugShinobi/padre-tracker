@@ -139,6 +139,7 @@ def overview(conn: sqlite3.Connection, today: date) -> dict:
         "yesterday": daily_summary(conn, yesterday),
         "week": week_series(conn, today, days=7),
         "week_totals": _sum_week(week_series(conn, today, days=7)),
+        "top_tokens_today": top_tokens(conn, today, limit=10),
         "top_tokens_week": top_tokens(conn, week_ago, limit=10),
         "groups_week": group_leaderboard(conn, week_ago, limit=10),
         "hourly_today": hourly_distribution(conn, today),
