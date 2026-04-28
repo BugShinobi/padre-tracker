@@ -156,9 +156,12 @@ def main():
                     except Exception as dump_err:
                         log.warning("Could not write empty-scrape debug dump: %s", dump_err)
                 if consecutive_empty_scrapes >= 3:
-                    log.warning("Recovering after %d empty scrapes: reload Padre page", consecutive_empty_scrapes)
-                    page.reload(wait_until="domcontentloaded", timeout=45000)
-                    page.wait_for_timeout(5000)
+                    log.warning("Recovering after %d empty scrapes: rebuild Padre tab", consecutive_empty_scrapes)
+                    try:
+                        page.close()
+                    except Exception:
+                        pass
+                    page = get_live_page(context)
                     navigate_to_alpha(page, PADRE_URL)
                     consecutive_empty_scrapes = 0
                     time.sleep(POLL_INTERVAL)

@@ -277,6 +277,15 @@ def navigate_to_alpha(page: Page, padre_url: str) -> None:
 
     if not page.is_closed():
         log.info("Ready. url=%s, title=%r", page.url, page.title())
+        for label in ("Alpha", "Alpha Tracker"):
+            try:
+                target = page.get_by_text(label, exact=True).first
+                if target.is_visible(timeout=1500):
+                    target.click(timeout=3000)
+                    page.wait_for_timeout(1500)
+                    log.info("Clicked Padre control: %s", label)
+            except Exception:
+                pass
 
 
 def dump_page_html(page: Page, out_path: str) -> None:
