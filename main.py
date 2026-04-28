@@ -115,6 +115,7 @@ def main():
 
     current_date = date.today()
     new_today = 0
+    consecutive_empty_scrapes = 0
 
     while running:
         try:
@@ -129,6 +130,20 @@ def main():
                 ignore_launchpads=IGNORE_LAUNCHPADS,
                 require_quality=REQUIRE_QUALITY,
             )
+            if calls:
+                consecutive_empty_scrapes = 0
+            else:
+                consecutive_empty_scrapes += 1
+                log.warning("Empty Alpha scrape #%d", consecutive_empty_scrapes)
+                if consecutive_empty_scrapes >= 3:
+                    log.warning("Recovering after %d empty scrapes: reload Padre page", consecutive_empty_scrapes)
+                    page.reload(wait_until="domcontentloaded", timeout=45000)
+                    page.wait_for_timeout(5000)
+                    navigate_to_alpha(page, PADRE_URL)
+                    consecutive_empty_scrapes = 0
+                    time.sleep(POLL_INTERVAL)
+                    continue
+
             processed_keys: set[str] = set()
             seeded = 0
 

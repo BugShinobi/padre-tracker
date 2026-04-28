@@ -89,12 +89,30 @@ _JS_EXTRACT = """
         return dt.toISOString().slice(0, 16);
     }
 
-    for (const link of document.querySelectorAll('a[href]')) {
-        const href = link.href || '';
+    function extractCa(value) {
+        if (!value) return null;
         let ca = null;
         for (const pat of patterns) {
-            const m = href.match(pat);
+            const m = String(value).match(pat);
             if (m) { ca = m[1]; break; }
+        }
+        if (!ca) {
+            const bare = String(value).match(/\\b([1-9A-HJ-NP-Za-km-z]{32,44})(?:pump|BAGS|moon|bonk|brrr)?\\b/);
+            if (bare) ca = bare[1];
+        }
+        return ca;
+    }
+
+    for (const link of document.querySelectorAll('*')) {
+        const values = [];
+        if (link.href) values.push(link.href);
+        for (const attr of (link.attributes || [])) {
+            values.push(attr.value);
+        }
+        let ca = null;
+        for (const value of values) {
+            ca = extractCa(value);
+            if (ca) break;
         }
         if (!ca) continue;
 
