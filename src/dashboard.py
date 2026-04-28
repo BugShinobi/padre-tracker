@@ -37,6 +37,13 @@ if Path(DB_PATH).exists():
     _boot = init_db(DB_PATH)
     # Drop the legacy curation table — delisting is now a hard DELETE, no soft state.
     _boot.execute("DROP TABLE IF EXISTS token_status")
+    _boot.execute(
+        """CREATE TABLE IF NOT EXISTS token_notes (
+            contract_address TEXT PRIMARY KEY,
+            note             TEXT NOT NULL DEFAULT '',
+            updated_at       TEXT NOT NULL
+        )"""
+    )
     _boot.commit()
     _boot.close()
 
@@ -718,6 +725,61 @@ def api_token(ca: str):
     })
 
 
+@app.route("/api/token/<ca>/note", methods=["GET"])
+def api_token_note_get(ca: str):
+    """Personal free-form note for a token. Used by /t/[ca] textarea."""
+    if not ca or len(ca) > 64 or not all(c.isalnum() or c in "_-" for c in ca):
+        return jsonify({"error": "invalid ca"}), 400
+    if not Path(DB_PATH).exists():
+        return jsonify({"note": "", "updated_at": None})
+
+    conn = _conn()
+    try:
+        row = conn.execute(
+            "SELECT note, updated_at FROM token_notes WHERE contract_address = ?", (ca,)
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return jsonify({"note": "", "updated_at": None})
+    return jsonify({"note": row["note"], "updated_at": row["updated_at"]})
+
+
+@app.route("/api/token/<ca>/note", methods=["PUT"])
+def api_token_note_put(ca: str):
+    """Upsert the note for a token. Empty string deletes the row."""
+    if not ca or len(ca) > 64 or not all(c.isalnum() or c in "_-" for c in ca):
+        return jsonify({"error": "invalid ca"}), 400
+
+    body = request.get_json(silent=True) or {}
+    note = body.get("note", "")
+    if not isinstance(note, str):
+        return jsonify({"error": "note must be a string"}), 400
+    note = note[:8000]
+    now = datetime.now().isoformat()
+
+    conn = _conn()
+    try:
+        if note.strip() == "":
+            conn.execute("DELETE FROM token_notes WHERE contract_address = ?", (ca,))
+            conn.commit()
+            return jsonify({"note": "", "updated_at": None})
+        conn.execute(
+            """INSERT INTO token_notes (contract_address, note, updated_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(contract_address) DO UPDATE SET
+                 note = excluded.note,
+                 updated_at = excluded.updated_at""",
+            (ca, note, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"note": note, "updated_at": now})
+
+
 @app.route("/api/token/<ca>", methods=["DELETE"])
 def api_delete_token(ca: str):
     """Hard-delete a token from every enrichment table.
@@ -731,7 +793,7 @@ def api_delete_token(ca: str):
     conn = _conn()
     try:
         deleted = 0
-        for table in ("calls", "token_prices", "token_gmgn", "token_metadata"):
+        for table in ("calls", "token_prices", "token_gmgn", "token_metadata", "token_notes"):
             try:
                 cur = conn.execute(
                     f"DELETE FROM {table} WHERE contract_address = ?", (ca,)

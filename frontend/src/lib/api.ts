@@ -11,6 +11,11 @@ export type TopGroupsResponse = {
 	windowDays: number;
 };
 
+export type TokenNoteResponse = {
+	note: string;
+	updated_at: string | null;
+};
+
 class ApiError extends Error {
 	constructor(
 		message: string,
@@ -75,6 +80,17 @@ export const api = {
 		const res = await fetch(`/api/token/${encodeURIComponent(ca)}`, { method: 'DELETE' });
 		if (!res.ok) throw new ApiError(`delete ${ca} → ${res.status}`, res.status);
 		return res.json() as Promise<{ ok: boolean; contract_address: string; deleted_rows: number }>;
+	},
+	getNote: (ca: string) =>
+		getJson<TokenNoteResponse>(`/api/token/${encodeURIComponent(ca)}/note`),
+	saveNote: async (ca: string, note: string) => {
+		const res = await fetch(`/api/token/${encodeURIComponent(ca)}/note`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ note })
+		});
+		if (!res.ok) throw new ApiError(`save note ${ca} → ${res.status}`, res.status);
+		return res.json() as Promise<TokenNoteResponse>;
 	}
 };
 

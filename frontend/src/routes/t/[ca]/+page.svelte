@@ -4,6 +4,7 @@
 	import { api } from '$lib/api';
 	import { fmtMc, fmtPct, fmtPrice, fmtNum, fmtAge, fmtDateTime, shortCa } from '$lib/format';
 	import DeleteButton from '$lib/components/DeleteButton.svelte';
+	import NoteEditor from '$lib/components/NoteEditor.svelte';
 
 	const ca = $derived(pageStore.params.ca ?? '');
 
@@ -179,6 +180,8 @@
 				{/if}
 			</div>
 		</div>
+
+		<NoteEditor ca={t.contract_address} />
 
 		{#if flags.length > 0 || t.groups_mentioned}
 			<div class="flex items-center gap-3 mb-6 text-xs flex-wrap">
