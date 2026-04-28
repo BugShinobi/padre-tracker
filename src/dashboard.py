@@ -1115,6 +1115,100 @@ def api_alerts_stats():
     })
 
 
+@app.route("/api/alerts/summary")
+def api_alerts_summary():
+    """Aggregated alerts by target ticker.
+
+    Gives the operational view: total dollars added, number of alerts, distinct
+    actors, whale count, KOL count, and last-seen timestamp for each ticker.
+    """
+    if not Path(DB_PATH).exists():
+        return jsonify({"ready": False, "data": [], "rowCount": 0})
+
+    alert_type = (request.args.get("type") or "").strip().lower()
+    ticker = (request.args.get("ticker") or "").strip()
+    actor = (request.args.get("actor") or "").strip()
+    source = (request.args.get("source") or "").strip()
+    date_from = (request.args.get("from") or "").strip()
+    date_to = (request.args.get("to") or "").strip()
+    try:
+        limit = max(1, min(200, int(request.args.get("limit", "50"))))
+    except (ValueError, TypeError):
+        limit = 50
+
+    def _f(name: str) -> float | None:
+        try:
+            v = request.args.get(name)
+            return float(v) if v not in (None, "") else None
+        except (ValueError, TypeError):
+            return None
+
+    min_usd = _f("min_usd")
+    max_usd = _f("max_usd")
+    min_mc = _f("min_mc")
+    max_mc = _f("max_mc")
+
+    where = ["target_ticker IS NOT NULL", "parse_status = 'matched'"]
+    params: list = []
+    if alert_type and alert_type != "all":
+        where.append("alert_type = ?")
+        params.append(alert_type)
+    if ticker:
+        where.append("target_ticker LIKE ? COLLATE NOCASE")
+        params.append(f"%{ticker}%")
+    if actor:
+        where.append("actor LIKE ? COLLATE NOCASE")
+        params.append(f"%{actor}%")
+    if source:
+        where.append("source_channel = ?")
+        params.append(source)
+    if min_usd is not None:
+        where.append("amount_usd >= ?")
+        params.append(min_usd)
+    if max_usd is not None:
+        where.append("amount_usd <= ?")
+        params.append(max_usd)
+    if min_mc is not None:
+        where.append("market_cap_usd >= ?")
+        params.append(min_mc)
+    if max_mc is not None:
+        where.append("market_cap_usd <= ?")
+        params.append(max_mc)
+    if date_from:
+        where.append("msg_date >= ?")
+        params.append(date_from)
+    if date_to:
+        where.append("msg_date <= ?")
+        params.append(date_to)
+
+    where_sql = "WHERE " + " AND ".join(where)
+
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            f"""SELECT target_ticker,
+                       COUNT(*) AS alert_count,
+                       COUNT(DISTINCT actor) AS actor_count,
+                       SUM(COALESCE(amount_usd, 0)) AS total_amount_usd,
+                       AVG(market_cap_usd) AS avg_market_cap_usd,
+                       MAX(market_cap_usd) AS max_market_cap_usd,
+                       MAX(msg_date) AS last_seen_at,
+                       SUM(CASE WHEN alert_type = 'whale' THEN 1 ELSE 0 END) AS whale_count,
+                       SUM(CASE WHEN alert_type IN ('kol', 'kol_newpair') THEN 1 ELSE 0 END) AS kol_count
+                FROM telegram_alerts
+                {where_sql}
+                GROUP BY target_ticker
+                ORDER BY total_amount_usd DESC, alert_count DESC, last_seen_at DESC
+                LIMIT ?""",
+            [*params, limit],
+        ).fetchall()
+    finally:
+        conn.close()
+
+    data = [dict(r) for r in rows]
+    return jsonify({"ready": True, "data": data, "rowCount": len(data)})
+
+
 # --------------------------------------------------------------------- SPA host
 # With static_url_path='' the Flask static handler claims `/<path:filename>` and
 # returns 404 directly when the file doesn't exist — so a hard-reload on

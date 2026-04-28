@@ -158,6 +158,24 @@ export type AlertsStatsResponse = {
 	top_tickers_7d: { target_ticker: string; hits: number }[];
 };
 
+export type AlertSummaryRow = {
+	target_ticker: string;
+	alert_count: number;
+	actor_count: number;
+	total_amount_usd: number;
+	avg_market_cap_usd: number | null;
+	max_market_cap_usd: number | null;
+	last_seen_at: string;
+	whale_count: number;
+	kol_count: number;
+};
+
+export type AlertsSummaryResponse = {
+	ready: boolean;
+	data: AlertSummaryRow[];
+	rowCount: number;
+};
+
 export type RangeResponse = {
 	ready: boolean;
 	data: RangeRow[];

@@ -18,6 +18,7 @@
 	let minUsd = $state<number>(Number(params.get('minUsd')) || 0);
 	let mcMin = $state<number>(Number(params.get('mcMin')) || 0);
 	let mcMax = $state<number>(Number(params.get('mcMax')) || 0);
+	let viewMode = $state<'summary' | 'raw'>((params.get('view') as 'summary' | 'raw') || 'summary');
 
 	let tickerTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
@@ -45,6 +46,7 @@
 		if (minUsd > 0) sp.set('minUsd', String(minUsd));
 		if (mcMin > 0) sp.set('mcMin', String(mcMin));
 		if (mcMax > 0) sp.set('mcMax', String(mcMax));
+		if (viewMode !== 'summary') sp.set('view', viewMode);
 		const qs = sp.toString();
 		goto(qs ? `?${qs}` : '?', { replaceState: true, noScroll: true, keepFocus: true });
 	});
@@ -70,6 +72,20 @@
 
 	const allRows = $derived(alertsQuery.data?.pages.flatMap((p) => p.data) ?? []);
 	const totalRows = $derived(alertsQuery.data?.pages[0]?.rowCount ?? 0);
+
+	const summaryQuery = createQuery(() => ({
+		queryKey: ['alerts-summary', typeFilter, ticker, actor, minUsd, mcMin, mcMax],
+		queryFn: () =>
+			api.alertsSummary({
+				type: typeFilter,
+				ticker: ticker || undefined,
+				actor: actor || undefined,
+				minUsd: minUsd > 0 ? minUsd : undefined,
+				minMc: mcMin > 0 ? mcMin : undefined,
+				maxMc: mcMax > 0 ? mcMax : undefined
+			}),
+		refetchInterval: 30_000
+	}));
 
 	const statsQuery = createQuery(() => ({
 		queryKey: ['alerts-stats'],
@@ -128,6 +144,7 @@
 		minUsd = 0;
 		mcMin = 0;
 		mcMax = 0;
+		viewMode = 'summary';
 	}
 
 	let expanded = $state<Set<number>>(new Set());
@@ -250,7 +267,67 @@
 		</aside>
 
 		<div>
-			{#if alertsQuery.isPending}
+			<div class="mb-3 flex items-center gap-1.5">
+				<button
+					type="button"
+					onclick={() => (viewMode = 'summary')}
+					class="px-3 py-1.5 rounded text-xs border transition-colors {viewMode === 'summary'
+						? 'border-zinc-400 bg-zinc-800 text-zinc-100'
+						: 'border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'}"
+				>Aggregated</button>
+				<button
+					type="button"
+					onclick={() => (viewMode = 'raw')}
+					class="px-3 py-1.5 rounded text-xs border transition-colors {viewMode === 'raw'
+						? 'border-zinc-400 bg-zinc-800 text-zinc-100'
+						: 'border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'}"
+				>Raw alerts</button>
+			</div>
+
+			{#if viewMode === 'summary'}
+				{#if summaryQuery.isPending}
+					<div class="py-12 text-center text-zinc-500">Loading…</div>
+				{:else if summaryQuery.isError}
+					<div class="py-12 text-center text-rose-400">Error: {summaryQuery.error.message}</div>
+				{:else if summaryQuery.data.data.length === 0}
+					<div class="rounded-lg border border-zinc-800 p-8 text-center text-sm text-zinc-500">
+						No aggregated alerts match the current filters.
+					</div>
+				{:else}
+					<div class="rounded-lg border border-zinc-800 overflow-hidden bg-zinc-950/40">
+						<table class="w-full text-sm">
+							<thead class="bg-zinc-900/60 text-zinc-500 uppercase text-[10px] tracking-wider">
+								<tr>
+									<th class="text-left px-3 py-2 font-normal">Ticker</th>
+									<th class="text-right px-3 py-2 font-normal">Added</th>
+									<th class="text-right px-3 py-2 font-normal">Alerts</th>
+									<th class="text-right px-3 py-2 font-normal">Whales</th>
+									<th class="text-right px-3 py-2 font-normal">KOL</th>
+									<th class="text-right px-3 py-2 font-normal">Actors</th>
+									<th class="text-right px-3 py-2 font-normal">Avg MC</th>
+									<th class="text-right px-3 py-2 font-normal">Max MC</th>
+									<th class="text-left px-3 py-2 font-normal">Last</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each summaryQuery.data.data as row (row.target_ticker)}
+									<tr class="border-t border-zinc-800/60 hover:bg-zinc-900/40">
+										<td class="px-3 py-2 font-medium text-zinc-100">${row.target_ticker}</td>
+										<td class="px-3 py-2 text-right tabular-nums text-emerald-300">{fmtMc(row.total_amount_usd)}</td>
+										<td class="px-3 py-2 text-right tabular-nums text-zinc-300">{fmtNum(row.alert_count)}</td>
+										<td class="px-3 py-2 text-right tabular-nums text-blue-300">{fmtNum(row.whale_count)}</td>
+										<td class="px-3 py-2 text-right tabular-nums text-purple-300">{fmtNum(row.kol_count)}</td>
+										<td class="px-3 py-2 text-right tabular-nums text-zinc-300">{fmtNum(row.actor_count)}</td>
+										<td class="px-3 py-2 text-right tabular-nums text-zinc-400">{fmtMc(row.avg_market_cap_usd)}</td>
+										<td class="px-3 py-2 text-right tabular-nums text-zinc-400">{fmtMc(row.max_market_cap_usd)}</td>
+										<td class="px-3 py-2 text-zinc-400 tabular-nums text-xs whitespace-nowrap">{fmtTimeShort(row.last_seen_at)}</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				{/if}
+			{:else if alertsQuery.isPending}
 				<div class="py-12 text-center text-zinc-500">Loading…</div>
 			{:else if alertsQuery.isError}
 				<div class="py-12 text-center text-rose-400">Error: {alertsQuery.error.message}</div>

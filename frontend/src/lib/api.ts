@@ -5,7 +5,8 @@ import type {
 	TokenResponse,
 	EnrichedRow,
 	AlertsResponse,
-	AlertsStatsResponse
+	AlertsStatsResponse,
+	AlertsSummaryResponse
 } from './types';
 
 export type TopGroupsResponse = {
@@ -140,6 +141,20 @@ export const api = {
 		if (params.from) q.set('from', params.from);
 		if (params.to) q.set('to', params.to);
 		return getJson<AlertsResponse>(`/api/alerts?${q}`);
+	},
+	alertsSummary: (params: AlertsParams = {}) => {
+		const q = new URLSearchParams();
+		if (params.type && params.type !== 'all') q.set('type', params.type);
+		if (params.ticker) q.set('ticker', params.ticker);
+		if (params.actor) q.set('actor', params.actor);
+		if (params.source) q.set('source', params.source);
+		if (params.minUsd != null) q.set('min_usd', String(params.minUsd));
+		if (params.maxUsd != null) q.set('max_usd', String(params.maxUsd));
+		if (params.minMc != null) q.set('min_mc', String(params.minMc));
+		if (params.maxMc != null) q.set('max_mc', String(params.maxMc));
+		if (params.from) q.set('from', params.from);
+		if (params.to) q.set('to', params.to);
+		return getJson<AlertsSummaryResponse>(`/api/alerts/summary?${q}`);
 	},
 	alertsStats: () => getJson<AlertsStatsResponse>('/api/alerts/stats')
 };
