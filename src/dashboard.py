@@ -24,6 +24,7 @@ from metadata import get_metadata_cached
 from telegram_db import init_telegram_table
 
 DB_PATH = os.getenv("DB_PATH", "./data/calls.db")
+ROOT_DIR = Path(__file__).resolve().parents[1]
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
@@ -191,6 +192,22 @@ def api_debug_tracker():
         "latest_event": dict(latest_event) if latest_event else None,
         "today": dict(counts) if counts else None,
     })
+
+
+@app.route("/api/debug/tracker/html")
+def api_debug_tracker_html():
+    path = ROOT_DIR / "data" / "debug" / "latest_empty.html"
+    if not path.exists():
+        return Response("debug html not found\n", status=404, mimetype="text/plain")
+    return Response(path.read_text(encoding="utf-8", errors="replace"), mimetype="text/html")
+
+
+@app.route("/api/debug/tracker/screenshot")
+def api_debug_tracker_screenshot():
+    path = ROOT_DIR / "data" / "debug" / "latest_empty.png"
+    if not path.exists():
+        return Response("debug screenshot not found\n", status=404, mimetype="text/plain")
+    return send_from_directory(path.parent, path.name, mimetype="image/png")
 
 
 @app.route("/api/stream/calls")

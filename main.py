@@ -54,7 +54,7 @@ def call_event_key(call: dict) -> str:
 
 
 def setup_dirs():
-    for d in [SESSION_DIR, CSV_DIR, "logs"]:
+    for d in [SESSION_DIR, CSV_DIR, "logs", "data/debug"]:
         Path(d).mkdir(parents=True, exist_ok=True)
 
 
@@ -148,6 +148,13 @@ def main():
             else:
                 consecutive_empty_scrapes += 1
                 log.warning("Empty Alpha scrape #%d", consecutive_empty_scrapes)
+                if consecutive_empty_scrapes == 1:
+                    try:
+                        dump_page_html(page, "data/debug/latest_empty.html")
+                        page.screenshot(path="data/debug/latest_empty.png", full_page=True)
+                        record_tracker_status(conn, debug_dump="data/debug/latest_empty.html", debug_screenshot="data/debug/latest_empty.png")
+                    except Exception as dump_err:
+                        log.warning("Could not write empty-scrape debug dump: %s", dump_err)
                 if consecutive_empty_scrapes >= 3:
                     log.warning("Recovering after %d empty scrapes: reload Padre page", consecutive_empty_scrapes)
                     page.reload(wait_until="domcontentloaded", timeout=45000)
