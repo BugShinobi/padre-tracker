@@ -36,17 +36,15 @@
 					<span class="text-emerald-400">◉</span>
 					<span>padre-tracker</span>
 				</a>
-				<nav class="text-sm text-zinc-400 flex items-center gap-4">
-					<a href="/" class="hover:text-zinc-100 transition-colors">Home</a>
-					<a href="/day" class="hover:text-zinc-100 transition-colors">Day</a>
-					<a href="/range" class="hover:text-zinc-100 transition-colors">Range</a>
-					<a href="/watchlist" class="hover:text-zinc-100 transition-colors flex items-center gap-1">
-						<span class="text-amber-400">★</span><span>Watch</span>
+				<nav class="text-sm flex items-center gap-2 overflow-x-auto">
+					<a href="/" class="px-3 py-1.5 rounded-md border border-zinc-800 bg-zinc-900/70 text-zinc-200 hover:bg-zinc-800 transition-colors">Home</a>
+					<a href="/day" class="px-3 py-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/16 transition-colors">Day</a>
+					<a href="/range" class="px-3 py-1.5 rounded-md border border-zinc-800 bg-zinc-900/70 text-zinc-200 hover:bg-zinc-800 transition-colors">Range</a>
+					<a href="/watchlist" class="px-3 py-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/16 transition-colors flex items-center gap-1">
+						<span>★</span><span>Watch</span>
 					</a>
-					<a href="/alerts" class="hover:text-zinc-100 transition-colors flex items-center gap-1">
-						<span>🐳</span><span>Alerts</span>
-					</a>
-					<a href="/live" class="hover:text-zinc-100 transition-colors flex items-center gap-1.5">
+					<a href="/alerts" class="px-3 py-1.5 rounded-md border border-sky-500/30 bg-sky-500/10 text-sky-100 hover:bg-sky-500/16 transition-colors">Alerts</a>
+					<a href="/live" class="px-3 py-1.5 rounded-md border border-zinc-800 bg-zinc-900/70 text-zinc-200 hover:bg-zinc-800 transition-colors flex items-center gap-1.5">
 						<StatusDot connected={live.connected} />
 						<span>Live</span>
 					</a>
