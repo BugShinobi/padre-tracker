@@ -30,6 +30,10 @@
 		return (row.ticker || row.name || row.contract_address || '?').slice(0, 2).toUpperCase();
 	}
 
+	function alertInitials(row: AlertSummaryRow): string {
+		return (row.target_ticker || row.name || '?').slice(0, 2).toUpperCase();
+	}
+
 	function lpClass(lp: string | null | undefined): string {
 		const k = (lp || '').split('.')[0].toLowerCase();
 		if (k === 'pump') return 'bg-amber-500/12 text-amber-300 border-amber-500/20';
@@ -101,10 +105,25 @@
 		class="grid grid-cols-[2rem_minmax(0,1fr)_auto] md:grid-cols-[2rem_minmax(0,1fr)_8rem_6rem] items-center gap-3 px-3.5 py-3 min-h-[64px] hover:bg-zinc-900/70 border-t border-zinc-800/70 first:border-t-0 transition-colors"
 	>
 		<span class="text-xs text-zinc-600 tabular-nums text-right">{idx}</span>
-		<div class="min-w-0">
-			<div class="font-semibold text-zinc-100 truncate">${row.target_ticker}</div>
-			<div class="text-[11px] text-zinc-500 truncate">
-				{fmtNum(row.whale_count)} whales · {fmtNum(row.actor_count)} actors
+		<div class="flex items-center gap-3 min-w-0">
+			{#if row.image_url}
+				<img
+					src={row.image_url}
+					alt=""
+					class="w-9 h-9 rounded-full object-cover bg-zinc-800 shrink-0 ring-1 ring-zinc-800"
+					loading="lazy"
+					referrerpolicy="no-referrer"
+				/>
+			{:else}
+				<div class="w-9 h-9 rounded-full shrink-0 ring-1 ring-zinc-700 bg-zinc-900 text-zinc-300 grid place-items-center font-semibold text-xs">
+					{alertInitials(row)}
+				</div>
+			{/if}
+			<div class="min-w-0">
+				<div class="font-semibold text-zinc-100 truncate">${row.target_ticker}</div>
+				<div class="text-[11px] text-zinc-500 truncate">
+					{fmtNum(row.whale_count)} whales · {fmtNum(row.actor_count)} actors
+				</div>
 			</div>
 		</div>
 		<div class="text-right tabular-nums">
@@ -136,7 +155,7 @@
 		{@const d = overview.data}
 
 		<header class="border border-zinc-800 bg-zinc-950 overflow-hidden rounded-lg">
-			<div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto] gap-5 p-5 lg:p-6">
+			<div class="p-5 lg:p-6">
 				<div class="min-w-0">
 					<div class="flex items-center gap-2 text-xs text-emerald-300 font-medium mb-2">
 						<span class="w-2 h-2 rounded-full bg-emerald-400"></span>
@@ -149,21 +168,6 @@
 						Live Alpha Tracker calls, repeat mentions, whale flow and watchlist actions in one place.
 					</p>
 				</div>
-
-				<nav class="grid grid-cols-2 sm:flex gap-2 text-sm content-start">
-					<a href="/day" class="px-4 py-3 rounded-md border border-emerald-500/40 bg-emerald-500/12 text-emerald-100 font-semibold hover:bg-emerald-500/18 transition-colors">
-						Day Board
-					</a>
-					<a href="/alerts" class="px-4 py-3 rounded-md border border-sky-500/35 bg-sky-500/10 text-sky-100 font-semibold hover:bg-sky-500/16 transition-colors">
-						Whale Alerts
-					</a>
-					<a href="/watchlist" class="px-4 py-3 rounded-md border border-amber-500/35 bg-amber-500/10 text-amber-100 font-semibold hover:bg-amber-500/16 transition-colors">
-						Watchlist
-					</a>
-					<a href="/live" class="px-4 py-3 rounded-md border border-zinc-700 bg-zinc-900 text-zinc-100 font-semibold hover:bg-zinc-800 transition-colors">
-						Live Feed
-					</a>
-				</nav>
 			</div>
 
 			<div class="grid grid-cols-2 lg:grid-cols-4 border-t border-zinc-800">

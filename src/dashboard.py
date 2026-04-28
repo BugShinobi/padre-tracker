@@ -1370,6 +1370,21 @@ def api_alerts_summary():
         conn.close()
 
     data = [dict(r) for r in rows]
+    cas = [r["target_ca"] for r in data if r.get("target_ca")]
+    if cas:
+        conn = _conn()
+        try:
+            meta_data, _ = get_metadata_cached(conn, cas)
+        finally:
+            conn.close()
+        for r in data:
+            meta = meta_data.get(r.get("target_ca")) or {}
+            r["name"] = meta.get("name")
+            r["image_url"] = meta.get("image_url")
+    else:
+        for r in data:
+            r["name"] = None
+            r["image_url"] = None
     return jsonify({"ready": True, "data": data, "rowCount": len(data)})
 
 

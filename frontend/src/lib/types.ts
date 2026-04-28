@@ -164,6 +164,8 @@ export type AlertsStatsResponse = {
 export type AlertSummaryRow = {
 	target_ticker: string;
 	target_ca: string | null;
+	name: string | null;
+	image_url: string | null;
 	alert_count: number;
 	actor_count: number;
 	total_amount_usd: number;
