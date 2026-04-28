@@ -1,0 +1,32 @@
+[Unit]
+Description=Padre Tracker Telegram ingest (whale watch userbot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cokle
+WorkingDirectory=/home/cokle/padre-tracker
+ExecStart=/home/cokle/padre-tracker/.venv/bin/python -m src.telegram_worker
+Restart=on-failure
+RestartSec=15
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# EnvironmentFile= ALWAYS overrides Environment= regardless of order — same
+# rule as padre-workers: keep DB_PATH as an absolute Environment= line below
+# so it survives a misconfigured .env. Leading `-` = don't fail if .env missing.
+EnvironmentFile=-/home/cokle/padre-tracker/.env
+Environment=DB_PATH=/home/cokle/padre-tracker/data/calls.db
+Environment=TELEGRAM_SESSION_PATH=/home/cokle/padre-tracker/data/telegram.session
+Environment=TELEGRAM_CHANNEL=whalewatchsolana
+
+MemoryMax=300M
+CPUQuota=15%
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

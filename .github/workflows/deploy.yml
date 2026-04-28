@@ -72,7 +72,7 @@ jobs:
             cd ~/padre-tracker
 
             drift=0
-            for svc in padre-dashboard padre-tracker padre-workers; do
+            for svc in padre-dashboard padre-tracker padre-workers padre-telegram; do
               if ! diff -q "$svc.service" "/etc/systemd/system/$svc.service" >/dev/null 2>&1; then
                 drift=1
                 echo "!!! $svc.service drifted — manual sync required on server"
@@ -85,6 +85,11 @@ jobs:
               sudo systemctl restart padre-workers
             else
               echo "padre-workers.service not installed yet — skip restart (run server-side install)"
+            fi
+            if systemctl list-unit-files padre-telegram.service >/dev/null 2>&1; then
+              sudo systemctl restart padre-telegram
+            else
+              echo "padre-telegram.service not installed yet — skip restart (run server-side install)"
             fi
 
             sleep 3
