@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from src.db import (
     backfill_counts_from_groups, backfill_launchpad, init_db, purge_by_launchpad,
-    purge_low_quality, purge_no_group, record_new_call, touch_seen,
+    purge_low_quality, purge_no_group, record_new_call, repair_call_aggregates_from_events, touch_seen,
 )
 from src.export_csv import export_daily_csv
 from src.scraper import (
@@ -81,6 +81,9 @@ def main():
     repaired = backfill_counts_from_groups(conn)
     if repaired:
         log.info("Repaired call_count from distinct groups on %d rows", repaired)
+    repaired = repair_call_aggregates_from_events(conn)
+    if repaired:
+        log.info("Repaired %d daily call aggregate row(s) from raw call events", repaired)
 
     pw, context = launch_browser(SESSION_DIR)
     register_page_listeners(context)

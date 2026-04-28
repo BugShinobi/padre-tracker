@@ -130,6 +130,104 @@ def backfill_counts_from_groups(conn: sqlite3.Connection) -> int:
     return updated
 
 
+def repair_call_aggregates_from_events(conn: sqlite3.Connection) -> int:
+    """Recover missing/undercounted daily aggregate rows from raw call events."""
+    rows = conn.execute(
+        """SELECT contract_address, call_date, ticker, chain, launchpad, group_name, observed_at
+           FROM call_events
+           ORDER BY call_date, contract_address, observed_at"""
+    ).fetchall()
+    aggregates: dict[tuple[str, str], dict] = {}
+    for row in rows:
+        key = (row["contract_address"], row["call_date"])
+        agg = aggregates.setdefault(
+            key,
+            {
+                "contract_address": row["contract_address"],
+                "call_date": row["call_date"],
+                "ticker": None,
+                "chain": "Solana",
+                "launchpad": None,
+                "call_count": 0,
+                "first_seen_at": row["observed_at"],
+                "last_seen_at": row["observed_at"],
+                "groups_mentioned": "",
+            },
+        )
+        agg["call_count"] += 1
+        agg["ticker"] = agg["ticker"] or row["ticker"]
+        agg["chain"] = row["chain"] or agg["chain"]
+        agg["launchpad"] = agg["launchpad"] or row["launchpad"]
+        agg["first_seen_at"] = min(agg["first_seen_at"], row["observed_at"])
+        agg["last_seen_at"] = max(agg["last_seen_at"], row["observed_at"])
+        agg["groups_mentioned"] = _merge_groups(agg["groups_mentioned"], row["group_name"] or "")
+
+    repaired = 0
+    for agg in aggregates.values():
+        existing = conn.execute(
+            """SELECT id, call_count, first_seen_at, last_seen_at, groups_mentioned
+               FROM calls
+               WHERE contract_address = ? AND call_date = ?""",
+            (agg["contract_address"], agg["call_date"]),
+        ).fetchone()
+
+        if not existing:
+            conn.execute(
+                """INSERT INTO calls
+                   (contract_address, ticker, chain, launchpad, call_count,
+                    first_seen_at, last_seen_at, groups_mentioned, call_date)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    agg["contract_address"],
+                    agg["ticker"],
+                    agg["chain"],
+                    agg["launchpad"],
+                    agg["call_count"],
+                    agg["first_seen_at"],
+                    agg["last_seen_at"],
+                    agg["groups_mentioned"],
+                    agg["call_date"],
+                ),
+            )
+            repaired += 1
+            continue
+
+        merged_groups = existing["groups_mentioned"] or ""
+        for group in (agg["groups_mentioned"] or "").split(","):
+            merged_groups = _merge_groups(merged_groups, group)
+        new_count = max(existing["call_count"] or 0, agg["call_count"])
+        new_first = min(existing["first_seen_at"], agg["first_seen_at"])
+        new_last = max(existing["last_seen_at"], agg["last_seen_at"])
+
+        if (
+            new_count != existing["call_count"]
+            or merged_groups != (existing["groups_mentioned"] or "")
+            or new_first != existing["first_seen_at"]
+            or new_last != existing["last_seen_at"]
+        ):
+            conn.execute(
+                """UPDATE calls
+                   SET call_count = ?, first_seen_at = ?, last_seen_at = ?,
+                       groups_mentioned = ?, ticker = COALESCE(ticker, ?),
+                       chain = COALESCE(chain, ?), launchpad = COALESCE(launchpad, ?)
+                   WHERE id = ?""",
+                (
+                    new_count,
+                    new_first,
+                    new_last,
+                    merged_groups,
+                    agg["ticker"],
+                    agg["chain"],
+                    agg["launchpad"],
+                    existing["id"],
+                ),
+            )
+            repaired += 1
+
+    conn.commit()
+    return repaired
+
+
 def backfill_launchpad(conn: sqlite3.Connection, detector) -> int:
     """Populate launchpad for existing rows. Returns number of rows updated."""
     rows = conn.execute(
