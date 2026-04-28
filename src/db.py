@@ -48,10 +48,29 @@ def init_db(db_path: str) -> sqlite3.Connection:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_calls_ca ON calls(contract_address)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_call_events_date ON call_events(call_date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_call_events_ca_date ON call_events(contract_address, call_date)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS tracker_status (
+            key        TEXT PRIMARY KEY,
+            value      TEXT,
+            updated_at TEXT NOT NULL
+        )
+    """)
     _migrate_add_launchpad(conn)
     _cleanup_bad_tickers(conn)
     conn.commit()
     return conn
+
+
+def record_tracker_status(conn: sqlite3.Connection, **values) -> None:
+    now = datetime.now().isoformat()
+    for key, value in values.items():
+        conn.execute(
+            """INSERT INTO tracker_status (key, value, updated_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+            (key, "" if value is None else str(value), now),
+        )
+    conn.commit()
 
 
 def _migrate_add_launchpad(conn: sqlite3.Connection) -> None:

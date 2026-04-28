@@ -12,11 +12,12 @@ from dotenv import load_dotenv
 
 from src.db import (
     backfill_counts_from_groups, backfill_launchpad, init_db, purge_by_launchpad,
-    purge_low_quality, purge_no_group, record_new_call, repair_call_aggregates_from_events, touch_seen,
+    purge_low_quality, purge_no_group, record_new_call, record_tracker_status,
+    repair_call_aggregates_from_events, touch_seen,
 )
 from src.export_csv import export_daily_csv
 from src.scraper import (
-    detect_launchpad, dump_page_html, get_live_page,
+    detect_launchpad, dump_page_html, get_last_scrape_stats, get_live_page,
     launch_browser, navigate_to_alpha, register_page_listeners, scrape_alpha_tracker,
 )
 
@@ -130,6 +131,18 @@ def main():
                 ignore_launchpads=IGNORE_LAUNCHPADS,
                 require_quality=REQUIRE_QUALITY,
             )
+            scrape_stats = get_last_scrape_stats()
+            record_tracker_status(
+                conn,
+                state="scraped",
+                page_url=getattr(page, "url", ""),
+                raw=scrape_stats.get("raw"),
+                kept=scrape_stats.get("kept"),
+                skipped=scrape_stats.get("skipped"),
+                skipped_ad=scrape_stats.get("skipped_ad"),
+                sample=scrape_stats.get("sample"),
+                last_error="",
+            )
             if calls:
                 consecutive_empty_scrapes = 0
             else:
@@ -176,6 +189,10 @@ def main():
         except Exception as e:
             err_msg = str(e)
             log.error("Scrape error: %s", err_msg)
+            try:
+                record_tracker_status(conn, state="error", last_error=err_msg)
+            except Exception:
+                pass
             # Page/browser closed → rebuild page and re-navigate before retrying.
             if "closed" in err_msg.lower() or "target" in err_msg.lower():
                 try:

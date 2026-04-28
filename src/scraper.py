@@ -10,6 +10,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright, Page, BrowserContext
 
 log = logging.getLogger(__name__)
+LAST_SCRAPE_STATS: dict = {}
 
 # Known Solana program addresses / always-in-view tokens — never store.
 _BLACKLIST_CA = {
@@ -371,4 +372,18 @@ def scrape_alpha_tracker(
         len(calls), skipped_lp + skipped_quality + skipped_ad,
         skipped_lp, skipped_quality, skipped_ad,
     )
+    global LAST_SCRAPE_STATS
+    LAST_SCRAPE_STATS = {
+        "raw": len(raw),
+        "kept": len(calls),
+        "skipped": skipped_lp + skipped_quality + skipped_ad,
+        "skipped_lp": skipped_lp,
+        "skipped_quality": skipped_quality,
+        "skipped_ad": skipped_ad,
+        "sample": raw[0].get("_text") if raw else None,
+    }
     return calls
+
+
+def get_last_scrape_stats() -> dict:
+    return dict(LAST_SCRAPE_STATS)

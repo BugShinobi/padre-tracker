@@ -149,6 +149,50 @@ def api_stats():
     return jsonify({"tokens_today": row["t"], "calls_today": row["c"]})
 
 
+@app.route("/api/debug/tracker")
+def api_debug_tracker():
+    if not Path(DB_PATH).exists():
+        return jsonify({"ready": False, "error": "db not ready"})
+
+    conn = _conn()
+    try:
+        status_rows = conn.execute(
+            "SELECT key, value, updated_at FROM tracker_status ORDER BY key"
+        ).fetchall()
+        status = {r["key"]: {"value": r["value"], "updated_at": r["updated_at"]} for r in status_rows}
+        latest_call = conn.execute(
+            """SELECT contract_address, ticker, call_count, groups_mentioned, first_seen_at, last_seen_at
+               FROM calls
+               ORDER BY last_seen_at DESC
+               LIMIT 1"""
+        ).fetchone()
+        latest_event = conn.execute(
+            """SELECT contract_address, ticker, group_name, observed_at, call_date, row_text
+               FROM call_events
+               ORDER BY observed_at DESC
+               LIMIT 1"""
+        ).fetchone()
+        today = date.today().isoformat()
+        counts = conn.execute(
+            """SELECT
+                   (SELECT COUNT(*) FROM calls WHERE call_date = ?) AS calls_rows,
+                   (SELECT COALESCE(SUM(call_count), 0) FROM calls WHERE call_date = ?) AS calls_total,
+                   (SELECT COUNT(*) FROM call_events WHERE call_date = ?) AS raw_events
+            """,
+            (today, today, today),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ready": True,
+        "status": status,
+        "latest_call": dict(latest_call) if latest_call else None,
+        "latest_event": dict(latest_event) if latest_event else None,
+        "today": dict(counts) if counts else None,
+    })
+
+
 @app.route("/api/stream/calls")
 def api_stream_calls():
     """SSE feed of newly-inserted calls.
